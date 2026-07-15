@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: bida-3c
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_URL
+        value: http://127.0.0.1:4001
+      - key: API_PORT
+        value: 4001
+      - key: DATABASE_POOL_SIZE
+        value: 5
+      - key: DATABASE_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true

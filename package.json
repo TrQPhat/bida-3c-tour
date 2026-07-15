@@ -1,0 +1,18 @@
+{
+  "name": "cue-arena",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently -n API,BFF,WEB -c yellow,cyan,green \"npm:dev -w @cue/api\" \"npm:dev -w @cue/bff\" \"npm:dev -w @cue/web\"",
+    "build": "npm run build -w @cue/web && npm run build -w @cue/api && npm run build -w @cue/bff",
+    "migrate": "npm run migrate -w @cue/api",
+    "import:sqlite": "npm run import:sqlite -w @cue/api",
+    "import:sqlite:execute": "npm run import:sqlite -w @cue/api -- --execute",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:staging": "node scripts/staging-security-smoke.mjs",
+    "start": "node scripts/start-production.mjs"
+  },
+  "devDependencies": { "concurrently": "^9.2.0" }
+}

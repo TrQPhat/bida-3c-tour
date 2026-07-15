@@ -1,0 +1,51 @@
+import {config} from 'dotenv';
+import express, {type Request,type Response,type NextFunction} from 'express';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
+import {rateLimit} from 'express-rate-limit';
+import {randomBytes} from 'node:crypto';
+import {dirname,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+config({path:resolve(dirname(fileURLToPath(import.meta.url)),'../../../.env'),override:false});
+
+type User={id:number;username:string;displayName:string;role:'admin'|'user';active:boolean};
+type Session={user:User;csrf:string};
+declare global{namespace Express{interface Request{session?:Session}}}
+const secret=process.env.SESSION_SECRET,internal=process.env.INTERNAL_API_KEY;
+if(!secret)throw new Error('SESSION_SECRET is required');
+if(!internal)throw new Error('INTERNAL_API_KEY is required');
+const app=express(),api=process.env.API_URL||'http://localhost:4001';
+app.disable('x-powered-by');app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],styleSrc:["'self'","'unsafe-inline'",'https://fonts.googleapis.com'],fontSrc:["'self'",'https://fonts.gstatic.com'],scriptSrc:["'self'"],imgSrc:["'self'",'data:'],connectSrc:["'self'"]}}}));app.use(express.json({limit:'32kb'}));app.use(cookieParser());
+app.use((req,res,next)=>{const token=req.cookies.cue_session;if(token){try{req.session=jwt.verify(token,secret) as Session}catch{res.clearCookie('cue_session')}}next()});
+const loginLimit=rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:true,legacyHeaders:false,message:{message:'Đăng nhập quá nhiều lần. Vui lòng thử lại sau.'}});
+const setSession=(res:Response,session:Session)=>{const token=jwt.sign(session,secret,{expiresIn:'8h'});res.cookie('cue_session',token,{httpOnly:true,sameSite:'strict',secure:process.env.NODE_ENV==='production',maxAge:8*3600*1000,path:'/'})};
+const call=async(path:string,req:Request,body?:unknown)=>{const h:Record<string,string>={'content-type':'application/json','x-internal-key':internal};if(req.session)h['x-user-id']=String(req.session.user.id);return fetch(`${api}${path}`,{method:req.method,headers:h,body:body===undefined?undefined:JSON.stringify(body)})};
+const relay=async(res:Response,p:Promise<globalThis.Response>)=>{try{const r=await p;const data=await r.json();res.status(r.status).json(data)}catch{res.status(502).json({message:'Dịch vụ tạm thời không khả dụng'})}};
+app.get('/healthz',async(_req,res)=>{try{const r=await fetch(`${api}/health`,{headers:{'x-internal-key':internal}});if(!r.ok)throw new Error();res.json({ok:true})}catch{res.status(503).json({ok:false})}});
+app.post('/bff/auth/login',loginLimit,async(req,res)=>{const r=await call('/auth/verify',req,req.body);const data=await r.json() as any;if(!r.ok)return res.status(r.status).json(data);const csrf=randomBytes(24).toString('hex'),session:Session={user:data,csrf};setSession(res,session);res.json({user:data,csrf})});
+app.get('/bff/auth/me',(req,res)=>req.session?res.json(req.session):res.status(401).json({message:'Chưa đăng nhập'}));
+const auth=(req:Request,res:Response,next:NextFunction)=>req.session?next():res.status(401).json({message:'Phiên đăng nhập đã hết hạn'});
+const csrf=(req:Request,res:Response,next:NextFunction)=>req.header('x-csrf-token')===req.session?.csrf?next():res.status(403).json({message:'CSRF token không hợp lệ'});
+const admin=(req:Request,res:Response,next:NextFunction)=>req.session?.user.role==='admin'?next():res.status(403).json({message:'Bạn không có quyền thực hiện thao tác này'});
+app.post('/bff/auth/logout',auth,csrf,(_req,res)=>res.clearCookie('cue_session',{path:'/'}).json({ok:true}));
+app.patch('/bff/profile',auth,csrf,async(req,res)=>{try{const r=await call('/profile',req,req.body),data=await r.json() as any;if(!r.ok)return res.status(r.status).json(data);const session:Session={user:data,csrf:req.session!.csrf};setSession(res,session);res.json(data)}catch{res.status(502).json({message:'Dịch vụ tạm thời không khả dụng'})}});
+app.get('/bff/dashboard',auth,(req,res)=>relay(res,call('/dashboard',req)));
+app.get('/bff/leaderboard',auth,(req,res)=>relay(res,call(`/leaderboard?page=${encodeURIComponent(String(req.query.page||'1'))}`,req)));
+app.get('/bff/users',auth,admin,(req,res)=>relay(res,call('/users',req)));
+app.post('/bff/users',auth,csrf,admin,(req,res)=>relay(res,call('/users',req,req.body)));
+app.patch('/bff/users/:id',auth,csrf,admin,async(req,res)=>{try{const r=await call(`/users/${req.params.id}`,req,req.body),data=await r.json() as any;if(!r.ok)return res.status(r.status).json(data);if(Number(req.params.id)===req.session!.user.id){const session:Session={user:data,csrf:req.session!.csrf};setSession(res,session)}res.json(data)}catch{res.status(502).json({message:'Dịch vụ tạm thời không khả dụng'})}});
+app.delete('/bff/users/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/users/${req.params.id}`,req)));
+app.post('/bff/teams',auth,csrf,admin,(req,res)=>relay(res,call('/teams',req,req.body)));
+app.patch('/bff/teams/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/teams/${req.params.id}`,req,req.body)));
+app.delete('/bff/teams/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/teams/${req.params.id}`,req)));
+app.post('/bff/tournaments',auth,csrf,admin,(req,res)=>relay(res,call('/tournaments',req,req.body)));
+app.post('/bff/tournaments/:id/generate',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/generate`,req,req.body)));
+app.post('/bff/tournaments/:id/reset',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/reset`,req,req.body)));
+app.patch('/bff/matches/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}`,req,req.body)));
+app.get('/bff/matches/:id/votes',auth,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}/votes`,req)));
+app.post('/bff/matches/:id/vote',auth,csrf,(req,res)=>relay(res,call(`/matches/${req.params.id}/vote`,req,req.body)));
+if(process.env.NODE_ENV==='production'){const web=resolve(dirname(fileURLToPath(import.meta.url)),'../../web/dist');app.use(express.static(web));app.get('/{*splat}',(_req,res)=>res.sendFile(resolve(web,'index.html')))}
+const port=Number(process.env.PORT||process.env.BFF_PORT||4000);
+app.listen(port,'0.0.0.0',()=>console.log(`BFF listening on ${port}`));
