@@ -1,9 +1,10 @@
 import 'dotenv/config';
 import { readFile, readdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pool, transaction } from './database.js';
 
-const migrationsDir = resolve(process.cwd(), 'migrations');
+const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../migrations');
 await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
 const files = (await readdir(migrationsDir)).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
 for (const name of files) {

@@ -73,7 +73,7 @@ app.delete('/users/:id', auth, admin, route(async (req, res) => {
 }));
 
 app.get('/dashboard', auth, route(async (req, res) => {
-  const [tournaments, teams, matches] = await Promise.all([
+  const [tournaments, teams, matches, history] = await Promise.all([
     all<Row>('SELECT id,name,status,start_at,created_at FROM tournaments ORDER BY id DESC'),
     all<Row>('SELECT * FROM teams ORDER BY active DESC,name'),
     all<Row>(`SELECT m.*,a.name team_a_name,a.color team_a_color,b.name team_b_name,b.color team_b_color,w.name winner_name,
@@ -82,8 +82,12 @@ app.get('/dashboard', auth, route(async (req, res) => {
       (SELECT team_id FROM votes v WHERE v.match_id=m.id AND v.user_id=$1) my_vote
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
       ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor!.id]),
+    all<Row>(`SELECT h.id history_id,h.tournament_name,h.archived_at,m.id,m.round_no,m.position,
+      m.team_a_name,m.team_a_captain,m.team_b_name,m.team_b_captain,m.score_a,m.score_b,m.winner_name,m.status
+      FROM tournament_history h JOIN match_history m ON m.history_id=h.id
+      ORDER BY h.archived_at DESC,h.id DESC,m.round_no,m.position`),
   ]);
-  res.json({ tournaments, teams, matches });
+  res.json({ tournaments, teams, matches, history });
 }));
 app.get('/leaderboard', auth, route(async (req, res) => {
   const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1), pageSize = 10;
@@ -135,8 +139,18 @@ app.post('/tournaments/:id/generate', auth, admin, route(async (req, res) => {
   res.json({ ok: true, teamCount: source.length, rounds });
 }));
 app.post('/tournaments/:id/reset', auth, admin, route(async (req, res) => {
-  const tid = Number(req.params.id); if (!(await one<Row>('SELECT id FROM tournaments WHERE id=$1', [tid]))) { res.status(404).json({ message: 'Không tìm thấy giải' }); return; }
-  await transaction(async (client) => { await client.query('DELETE FROM matches WHERE tournament_id=$1', [tid]); await client.query("UPDATE tournaments SET status='draft' WHERE id=$1", [tid]); }); res.json({ ok: true });
+  const tid = Number(req.params.id), tournament = await one<Row>('SELECT id,name FROM tournaments WHERE id=$1', [tid]); if (!tournament) { res.status(404).json({ message: 'Không tìm thấy giải' }); return; }
+  const matchCount = Number((await one<Row>('SELECT COUNT(*)::int n FROM matches WHERE tournament_id=$1', [tid]))!.n);
+  if (!matchCount) { res.status(409).json({ message: 'Giải chưa có trận đấu để lưu lịch sử' }); return; }
+  await transaction(async (client) => {
+    const archive = (await client.query('INSERT INTO tournament_history(source_tournament_id,tournament_name) VALUES($1,$2) RETURNING id', [tid, tournament.name])).rows[0];
+    await client.query(`INSERT INTO match_history(history_id,round_no,position,team_a_name,team_a_captain,team_b_name,team_b_captain,score_a,score_b,winner_name,status)
+      SELECT $1,m.round_no,m.position,a.name,a.captain,b.name,b.captain,m.score_a,m.score_b,w.name,m.status
+      FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
+      WHERE m.tournament_id=$2 ORDER BY m.round_no,m.position`, [archive.id, tid]);
+    await client.query('DELETE FROM matches WHERE tournament_id=$1', [tid]);
+    await client.query("UPDATE tournaments SET status='draft' WHERE id=$1", [tid]);
+  }); res.json({ ok: true, archivedMatches: matchCount });
 }));
 app.patch('/matches/:id', auth, admin, route(async (req, res) => {
   const id = Number(req.params.id), m = await one<Row>('SELECT * FROM matches WHERE id=$1', [id]); if (!m) { res.status(404).json({ message: 'Không tìm thấy trận' }); return; }

@@ -1,5 +1,12 @@
 import { spawn } from 'node:child_process';
 
+const migration = spawn(process.execPath, ['apps/api/dist/migrate.js'], { stdio: 'inherit', env: process.env });
+const migrationCode = await new Promise((resolve) => migration.on('exit', resolve));
+if (migrationCode !== 0) {
+  console.error(`Database migration failed (${migrationCode})`);
+  process.exit(Number(migrationCode) || 1);
+}
+
 const children = [
   spawn(process.execPath, ['apps/api/dist/index.js'], { stdio: 'inherit', env: process.env }),
   spawn(process.execPath, ['apps/bff/dist/index.js'], { stdio: 'inherit', env: process.env }),

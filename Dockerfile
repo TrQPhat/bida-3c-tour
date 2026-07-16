@@ -17,6 +17,7 @@ COPY apps/bff/package.json apps/bff/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/apps/api/dist apps/api/dist
+COPY --from=build /app/apps/api/migrations apps/api/migrations
 COPY --from=build /app/apps/bff/dist apps/bff/dist
 COPY --from=build /app/apps/web/dist apps/web/dist
 COPY scripts/start-production.mjs scripts/start-production.mjs
