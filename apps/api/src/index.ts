@@ -92,11 +92,17 @@ app.get('/dashboard', auth, route(async (req, res) => {
 app.get('/leaderboard', auth, route(async (req, res) => {
   const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1), pageSize = 10;
   const total = Number((await one<Row>("SELECT COUNT(*)::int n FROM users WHERE role='user'"))!.n), pages = Math.max(1, Math.ceil(total / pageSize));
-  const items = await all<Row>(`SELECT u.id,u.username,u.display_name,u.active,COALESCE(SUM(v.awarded),0)::int points,
-    COUNT(*) FILTER (WHERE v.awarded=1)::int correct,COUNT(*) FILTER (WHERE v.awarded=-1)::int wrong,COUNT(v.awarded)::int scored_votes
-    FROM users u LEFT JOIN votes v ON v.user_id=u.id WHERE u.role='user' GROUP BY u.id
+  const items = await all<Row>(`SELECT u.id,u.username,u.display_name,u.active,COALESCE(s.points,0) points,
+    COALESCE(s.correct,0) correct,COALESCE(s.wrong,0) wrong,COALESCE(s.scored_votes,0) scored_votes
+    FROM users u LEFT JOIN user_prediction_scores s ON s.user_id=u.id WHERE u.role='user'
     ORDER BY points DESC,correct DESC,LOWER(u.display_name) LIMIT $1 OFFSET $2`, [pageSize, (page - 1) * pageSize]);
   res.json({ items, page, pageSize, total, pages });
+}));
+app.post('/leaderboard/reset', auth, admin, route(async (_req, res) => {
+  const pendingHistory = Number((await one<Row>('SELECT COUNT(*)::int n FROM votes WHERE awarded IS NOT NULL'))!.n);
+  if (pendingHistory) { res.status(409).json({ message: 'Hãy reset giải đấu hiện tại trước khi reset điểm tích lũy' }); return; }
+  await pool.query('UPDATE user_prediction_scores SET points=0,correct=0,wrong=0,scored_votes=0,updated_at=CURRENT_TIMESTAMP');
+  res.json({ ok: true });
 }));
 app.post('/teams', auth, admin, route(async (req, res) => {
   const { name, captain, color = '#c9ff47' } = req.body; if (!name || !captain) { res.status(400).json({ message: 'Tên đội và đội trưởng là bắt buộc' }); return; }
@@ -160,7 +166,8 @@ app.patch('/matches/:id', auth, admin, route(async (req, res) => {
   const finalA = Number(scoreA) + hA, finalB = Number(scoreB) + hB; if (scoreA != null && scoreB != null && finalA === finalB) { res.status(400).json({ message: 'Tổng điểm sau chấp không được hòa' }); return; }
   await transaction(async (client) => {
     await client.query('UPDATE matches SET handicap_a=$1,handicap_b=$2,scheduled_at=COALESCE($3,scheduled_at),voting_locked=COALESCE($4,voting_locked) WHERE id=$5', [hA, hB, scheduledAt ?? null, votingLocked == null ? null : Boolean(votingLocked), id]);
-    if (scoreA != null && scoreB != null) { const winner = finalA > finalB ? m.team_a_id : m.team_b_id; await client.query("UPDATE matches SET score_a=$1,score_b=$2,winner_id=$3,status='finished',voting_locked=TRUE WHERE id=$4", [scoreA, scoreB, winner, id]); await client.query('UPDATE votes SET awarded=CASE WHEN team_id=$1 THEN 1 ELSE -1 END WHERE match_id=$2', [winner, id]); if (m.next_match_id) await client.query(`UPDATE matches SET ${m.next_slot === 'a' ? 'team_a_id' : 'team_b_id'}=$1 WHERE id=$2`, [winner, m.next_match_id]); else await client.query("UPDATE tournaments SET status='finished' WHERE id=$1", [m.tournament_id]); }
+    if (scoreA != null && scoreB != null) { const winner = finalA > finalB ? m.team_a_id : m.team_b_id; await client.query("UPDATE matches SET score_a=$1,score_b=$2,winner_id=$3,status='finished',voting_locked=TRUE WHERE id=$4", [scoreA, scoreB, winner, id]); const scored=(await client.query('SELECT user_id,awarded,CASE WHEN team_id=$1 THEN 1 ELSE -1 END new_awarded FROM votes WHERE match_id=$2 FOR UPDATE',[winner,id])).rows;for(const vote of scored){const oldAward=vote.awarded==null?null:Number(vote.awarded),newAward=Number(vote.new_awarded);await client.query('UPDATE votes SET awarded=$1 WHERE user_id=$2 AND match_id=$3',[newAward,vote.user_id,id]);await client.query(`INSERT INTO user_prediction_scores(user_id,points,correct,wrong,scored_votes) VALUES($1,$2,$3,$4,$5)
+      ON CONFLICT(user_id) DO UPDATE SET points=user_prediction_scores.points+EXCLUDED.points,correct=user_prediction_scores.correct+EXCLUDED.correct,wrong=user_prediction_scores.wrong+EXCLUDED.wrong,scored_votes=user_prediction_scores.scored_votes+EXCLUDED.scored_votes,updated_at=CURRENT_TIMESTAMP`,[vote.user_id,newAward-(oldAward??0),(newAward===1?1:0)-(oldAward===1?1:0),(newAward===-1?1:0)-(oldAward===-1?1:0),oldAward==null?1:0]);} if (m.next_match_id) await client.query(`UPDATE matches SET ${m.next_slot === 'a' ? 'team_a_id' : 'team_b_id'}=$1 WHERE id=$2`, [winner, m.next_match_id]); else await client.query("UPDATE tournaments SET status='finished' WHERE id=$1", [m.tournament_id]); }
   }); res.json({ ok: true });
 }));
 app.get('/matches/:id/votes', auth, admin, route(async (req, res) => {
