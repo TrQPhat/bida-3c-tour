@@ -13,6 +13,12 @@ const hash = (password: string) => { const salt = randomBytes(16).toString('hex'
 const verify = (password: string, stored: string) => { const [salt, key] = stored.split(':'); if (!salt || !key) return false; const a = Buffer.from(key, 'hex'), b = scryptSync(password, salt, 64); return a.length === b.length && timingSafeEqual(a, b); };
 const cleanUser = (u: Row) => ({ id: Number(u.id), username: u.username, displayName: u.display_name, role: u.role, active: Boolean(u.active) });
 const route = (handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => { void handler(req, res, next).catch(next); };
+const vietnamDateAt1230 = (value: string | Date) => {
+  const date = new Date(value); if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return new Date(`${get('year')}-${get('month')}-${get('day')}T12:30:00+07:00`);
+};
 
 const app = express();
 const internalApiKey = process.env.INTERNAL_API_KEY;
@@ -125,7 +131,8 @@ app.delete('/teams/:id', auth, admin, route(async (req, res) => {
 }));
 app.post('/tournaments', auth, admin, route(async (req, res) => {
   const { name, startAt, teamIds = [] } = req.body; if (!name) { res.status(400).json({ message: 'Tên giải là bắt buộc' }); return; }
-  const id = await transaction(async (client) => { const row = (await client.query('INSERT INTO tournaments(name,start_at) VALUES($1,$2) RETURNING id', [name, startAt || null])).rows[0]; for (const teamId of teamIds) await client.query('INSERT INTO tournament_teams VALUES($1,$2)', [row.id, teamId]); return Number(row.id); });
+  const tournamentStart = vietnamDateAt1230(startAt || new Date()); if (!tournamentStart) { res.status(400).json({ message: 'Ngày diễn ra không hợp lệ' }); return; }
+  const id = await transaction(async (client) => { const row = (await client.query('INSERT INTO tournaments(name,start_at) VALUES($1,$2) RETURNING id', [name, tournamentStart.toISOString()])).rows[0]; for (const teamId of teamIds) await client.query('INSERT INTO tournament_teams VALUES($1,$2)', [row.id, teamId]); return Number(row.id); });
   res.status(201).json({ id });
 }));
 
@@ -140,7 +147,7 @@ app.post('/tournaments/:id/generate', auth, admin, route(async (req, res) => {
   await transaction(async (client: PoolClient) => {
     const created = new Map<string, number>();
     for (let r = rounds; r >= 1; r--) for (let p = 1; p <= size / 2 ** r; p++) { const next = r === rounds ? null : created.get(`${r + 1}:${Math.ceil(p / 2)}`)!; const row = (await client.query('INSERT INTO matches(tournament_id,round_no,position,scheduled_at,next_match_id,next_slot) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [tid, r, p, null, next, p % 2 ? 'a' : 'b'])).rows[0]; created.set(`${r}:${p}`, Number(row.id)); }
-    const start = t.start_at ? new Date(t.start_at) : new Date();
+    const start = vietnamDateAt1230(t.start_at || t.created_at || new Date())!;
     for (let p = 1; p <= size / 2; p++) { const teamA = slots[(p - 1) * 2], teamB = slots[(p - 1) * 2 + 1], matchId = created.get(`1:${p}`)!, at = new Date(start.getTime() + (p - 1) * 90 * 60_000).toISOString(); await client.query('UPDATE matches SET team_a_id=$1,team_b_id=$2,scheduled_at=$3 WHERE id=$4', [teamA, teamB, at, matchId]); if (teamA && !teamB) { const m = (await client.query('SELECT next_match_id,next_slot FROM matches WHERE id=$1', [matchId])).rows[0]; await client.query("UPDATE matches SET winner_id=$1,status='bye' WHERE id=$2", [teamA, matchId]); if (m.next_match_id) await client.query(`UPDATE matches SET ${m.next_slot === 'a' ? 'team_a_id' : 'team_b_id'}=$1 WHERE id=$2`, [teamA, m.next_match_id]); } }
     await client.query("UPDATE tournaments SET status='active',last_draw_signature=$1 WHERE id=$2", [signature, tid]);
   });
