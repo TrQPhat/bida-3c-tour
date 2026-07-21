@@ -83,9 +83,11 @@ app.get('/dashboard', auth, route(async (req, res) => {
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
       ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor!.id]),
     all<Row>(`SELECT h.id history_id,h.tournament_name,h.archived_at,m.id,m.round_no,m.position,
+      MAX(m.round_no) OVER (PARTITION BY h.id)::int max_round,
       m.team_a_name,m.team_a_captain,m.team_b_name,m.team_b_captain,m.score_a,m.score_b,m.winner_name,m.status
       FROM tournament_history h JOIN match_history m ON m.history_id=h.id
-      ORDER BY h.archived_at DESC,h.id DESC,m.round_no,m.position`),
+      ORDER BY h.archived_at DESC,h.id DESC,m.id DESC
+      LIMIT 10`),
   ]);
   res.json({ tournaments, teams, matches, history });
 }));
