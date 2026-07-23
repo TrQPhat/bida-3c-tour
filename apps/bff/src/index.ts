@@ -31,8 +31,8 @@ const csrf=(req:Request,res:Response,next:NextFunction)=>req.header('x-csrf-toke
 const admin=(req:Request,res:Response,next:NextFunction)=>req.session?.user.role==='admin'?next():res.status(403).json({message:'Bạn không có quyền thực hiện thao tác này'});
 app.post('/bff/auth/logout',auth,csrf,(_req,res)=>res.clearCookie('cue_session',{path:'/'}).json({ok:true}));
 app.patch('/bff/profile',auth,csrf,async(req,res)=>{try{const r=await call('/profile',req,req.body),data=await r.json() as any;if(!r.ok)return res.status(r.status).json(data);const session:Session={user:data,csrf:req.session!.csrf};setSession(res,session);res.json(data)}catch{res.status(502).json({message:'Dịch vụ tạm thời không khả dụng'})}});
-app.get('/bff/dashboard',auth,(req,res)=>relay(res,call('/dashboard',req)));
-app.get('/bff/leaderboard',auth,(req,res)=>relay(res,call(`/leaderboard?page=${encodeURIComponent(String(req.query.page||'1'))}`,req)));
+app.get('/bff/dashboard',(req,res)=>relay(res,call('/dashboard',req)));
+app.get('/bff/leaderboard',(req,res)=>relay(res,call(`/leaderboard?page=${encodeURIComponent(String(req.query.page||'1'))}`,req)));
 app.post('/bff/leaderboard/reset',auth,csrf,admin,(req,res)=>relay(res,call('/leaderboard/reset',req,req.body)));
 app.get('/bff/users',auth,admin,(req,res)=>relay(res,call('/users',req)));
 app.post('/bff/users',auth,csrf,admin,(req,res)=>relay(res,call('/users',req,req.body)));

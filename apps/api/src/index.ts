@@ -78,7 +78,7 @@ app.delete('/users/:id', auth, admin, route(async (req, res) => {
   const result = await pool.query('DELETE FROM users WHERE id=$1', [id]); if (!result.rowCount) { res.status(404).json({ message: 'Không tìm thấy tài khoản' }); return; } res.json({ ok: true });
 }));
 
-app.get('/dashboard', auth, route(async (req, res) => {
+app.get('/dashboard', route(async (req, res) => {
   const [tournaments, teams, matches, history] = await Promise.all([
     all<Row>('SELECT id,name,status,start_at,created_at FROM tournaments ORDER BY id DESC'),
     all<Row>('SELECT * FROM teams ORDER BY active DESC,name'),
@@ -87,7 +87,7 @@ app.get('/dashboard', auth, route(async (req, res) => {
       (SELECT COUNT(*)::int FROM votes v WHERE v.match_id=m.id AND v.team_id=m.team_b_id) votes_b,
       (SELECT team_id FROM votes v WHERE v.match_id=m.id AND v.user_id=$1) my_vote
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
-      ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor!.id]),
+      ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor?.id ?? null]),
     all<Row>(`SELECT h.id history_id,h.tournament_name,h.archived_at,m.id,m.round_no,m.position,
       MAX(m.round_no) OVER (PARTITION BY h.id)::int max_round,
       m.team_a_name,m.team_a_captain,m.team_b_name,m.team_b_captain,m.score_a,m.score_b,m.winner_name,m.status
@@ -97,7 +97,7 @@ app.get('/dashboard', auth, route(async (req, res) => {
   ]);
   res.json({ tournaments, teams, matches, history });
 }));
-app.get('/leaderboard', auth, route(async (req, res) => {
+app.get('/leaderboard', route(async (req, res) => {
   const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1), pageSize = 10;
   const total = Number((await one<Row>("SELECT COUNT(*)::int n FROM users WHERE role='user'"))!.n), pages = Math.max(1, Math.ceil(total / pageSize));
   const items = await all<Row>(`SELECT u.id,u.username,u.display_name,u.active,COALESCE(s.points,0) points,
