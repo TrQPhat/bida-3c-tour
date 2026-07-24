@@ -89,7 +89,7 @@ app.get('/dashboard', route(async (req, res) => {
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
       ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor?.id ?? null]),
     all<Row>(`SELECT h.id history_id,h.tournament_name,h.archived_at,m.id,m.round_no,m.position,
-      MAX(m.round_no) OVER (PARTITION BY h.id)::int max_round,
+      COALESCE(h.max_round,MAX(m.round_no) OVER (PARTITION BY h.id))::int max_round,
       m.team_a_name,m.team_a_captain,m.team_b_name,m.team_b_captain,m.score_a,m.score_b,m.winner_name,m.status
       FROM tournament_history h JOIN match_history m ON m.history_id=h.id
       ORDER BY h.archived_at DESC,h.id DESC,m.id DESC
@@ -201,17 +201,33 @@ app.patch('/tournaments/:id/pairings', auth, admin, route(async (req, res) => {
 }));
 app.post('/tournaments/:id/reset', auth, admin, route(async (req, res) => {
   const tid = Number(req.params.id), tournament = await one<Row>('SELECT id,name FROM tournaments WHERE id=$1', [tid]); if (!tournament) { res.status(404).json({ message: 'Không tìm thấy giải' }); return; }
-  const matchCount = Number((await one<Row>('SELECT COUNT(*)::int n FROM matches WHERE tournament_id=$1', [tid]))!.n);
-  if (!matchCount) { res.status(409).json({ message: 'Giải chưa có trận đấu để lưu lịch sử' }); return; }
+  const matchSummary = (await one<Row>(`SELECT
+    COUNT(*) FILTER (WHERE team_a_id IS NOT NULL AND team_b_id IS NOT NULL)::int confirmed_count,
+    COALESCE(MAX(round_no),1)::int max_round
+    FROM matches WHERE tournament_id=$1`, [tid]))!;
+  const confirmedMatchCount = Number(matchSummary.confirmed_count);
+  if (!confirmedMatchCount) { res.status(409).json({ message: 'Giải chưa có cặp đấu đã xác định để lưu lịch sử' }); return; }
   await transaction(async (client) => {
-    const archive = (await client.query('INSERT INTO tournament_history(source_tournament_id,tournament_name) VALUES($1,$2) RETURNING id', [tid, tournament.name])).rows[0];
+    const archive = (await client.query('INSERT INTO tournament_history(source_tournament_id,tournament_name,max_round) VALUES($1,$2,$3) RETURNING id', [tid, tournament.name, matchSummary.max_round])).rows[0];
     await client.query(`INSERT INTO match_history(history_id,round_no,position,team_a_name,team_a_captain,team_b_name,team_b_captain,score_a,score_b,winner_name,status)
       SELECT $1,m.round_no,m.position,a.name,a.captain,b.name,b.captain,m.score_a,m.score_b,w.name,m.status
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
-      WHERE m.tournament_id=$2 ORDER BY m.round_no,m.position`, [archive.id, tid]);
+      WHERE m.tournament_id=$2 AND m.team_a_id IS NOT NULL AND m.team_b_id IS NOT NULL
+      ORDER BY m.round_no,m.position`, [archive.id, tid]);
     await client.query('DELETE FROM matches WHERE tournament_id=$1', [tid]);
     await client.query("UPDATE tournaments SET status='draft' WHERE id=$1", [tid]);
-  }); res.json({ ok: true, archivedMatches: matchCount });
+  }); res.json({ ok: true, archivedMatches: confirmedMatchCount });
+}));
+app.post('/tournaments/:id/cancel', auth, admin, route(async (req, res) => {
+  const tid = Number(req.params.id);
+  if (!(await one<Row>('SELECT id FROM tournaments WHERE id=$1', [tid]))) { res.status(404).json({ message: 'Không tìm thấy giải' }); return; }
+  const matchCount = Number((await one<Row>('SELECT COUNT(*)::int n FROM matches WHERE tournament_id=$1', [tid]))!.n);
+  if (!matchCount) { res.status(409).json({ message: 'Giải chưa có lịch đấu để huỷ' }); return; }
+  await transaction(async (client) => {
+    await client.query('DELETE FROM matches WHERE tournament_id=$1', [tid]);
+    await client.query("UPDATE tournaments SET status='draft' WHERE id=$1", [tid]);
+  });
+  res.json({ ok: true, cancelledMatches: matchCount });
 }));
 app.patch('/matches/:id', auth, admin, route(async (req, res) => {
   const id = Number(req.params.id), m = await one<Row>('SELECT * FROM matches WHERE id=$1', [id]); if (!m) { res.status(404).json({ message: 'Không tìm thấy trận' }); return; }
