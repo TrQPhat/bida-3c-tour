@@ -43,6 +43,7 @@ app.patch('/bff/teams/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/teams/${r
 app.delete('/bff/teams/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/teams/${req.params.id}`,req)));
 app.post('/bff/tournaments',auth,csrf,admin,(req,res)=>relay(res,call('/tournaments',req,req.body)));
 app.post('/bff/tournaments/:id/generate',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/generate`,req,req.body)));
+app.patch('/bff/tournaments/:id/pairings',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/pairings`,req,req.body)));
 app.post('/bff/tournaments/:id/reset',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/reset`,req,req.body)));
 app.patch('/bff/matches/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}`,req,req.body)));
 app.get('/bff/matches/:id/votes',auth,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}/votes`,req)));

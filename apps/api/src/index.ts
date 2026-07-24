@@ -153,6 +153,52 @@ app.post('/tournaments/:id/generate', auth, admin, route(async (req, res) => {
   });
   res.json({ ok: true, teamCount: source.length, rounds });
 }));
+app.patch('/tournaments/:id/pairings', auth, admin, route(async (req, res) => {
+  const tid = Number(req.params.id);
+  const teamIds = Array.isArray(req.body.teamIds) ? req.body.teamIds.map(Number) : [];
+  if (!Number.isInteger(tid) || tid < 1 || teamIds.some((id: number) => !Number.isInteger(id) || id < 1) || new Set(teamIds).size !== teamIds.length) {
+    res.status(400).json({ message: 'Danh sách đội không hợp lệ' }); return;
+  }
+  await transaction(async (client) => {
+    const tournament = (await client.query('SELECT id FROM tournaments WHERE id=$1 FOR UPDATE', [tid])).rows[0];
+    if (!tournament) { const error: any = new Error('Không tìm thấy giải'); error.status = 404; throw error; }
+    const matches = (await client.query('SELECT * FROM matches WHERE tournament_id=$1 ORDER BY round_no,position FOR UPDATE', [tid])).rows;
+    const firstRound = matches.filter((m) => Number(m.round_no) === 1);
+    if (!firstRound.length) { const error: any = new Error('Giải chưa được xếp lịch'); error.status = 409; throw error; }
+    const currentIds = firstRound.flatMap((m) => [m.team_a_id, m.team_b_id]).filter(Boolean).map(Number).sort((a, b) => a - b);
+    const requestedIds = [...teamIds].sort((a, b) => a - b);
+    if (currentIds.length !== requestedIds.length || currentIds.some((id, index) => id !== requestedIds[index])) {
+      const error: any = new Error('Danh sách đội phải giữ nguyên các đội đã được xếp lịch'); error.status = 400; throw error;
+    }
+    const voteCount = Number((await client.query('SELECT COUNT(*)::int n FROM votes v JOIN matches m ON m.id=v.match_id WHERE m.tournament_id=$1', [tid])).rows[0].n);
+    const playedCount = matches.filter((m) => m.status === 'finished').length;
+    if (voteCount || playedCount) {
+      const error: any = new Error('Không thể đổi cặp sau khi đã có bình chọn hoặc kết quả thi đấu'); error.status = 409; throw error;
+    }
+    await client.query("UPDATE matches SET team_a_id=NULL,team_b_id=NULL,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,handicap_a=0,handicap_b=0 WHERE tournament_id=$1 AND round_no>1", [tid]);
+    let index = 0;
+    const signature: number[] = [];
+    for (const match of firstRound) {
+      const teamA = match.team_a_id == null ? null : teamIds[index++];
+      const teamB = match.team_b_id == null ? null : teamIds[index++];
+      signature.push(teamA ?? 0, teamB ?? 0);
+      await client.query("UPDATE matches SET team_a_id=$1,team_b_id=$2,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,handicap_a=0,handicap_b=0 WHERE id=$3", [teamA, teamB, match.id]);
+      if ((teamA == null) !== (teamB == null)) {
+        const winner = teamA ?? teamB;
+        await client.query("UPDATE matches SET winner_id=$1,status='bye' WHERE id=$2", [winner, match.id]);
+        if (match.next_match_id) {
+          const column = match.next_slot === 'a' ? 'team_a_id' : 'team_b_id';
+          await client.query(`UPDATE matches SET ${column}=$1 WHERE id=$2`, [winner, match.next_match_id]);
+        }
+      }
+    }
+    await client.query('UPDATE tournaments SET last_draw_signature=$1 WHERE id=$2', [signature.join(','), tid]);
+  }).catch((error: any) => {
+    if (error?.status) { res.status(error.status).json({ message: error.message }); return; }
+    throw error;
+  });
+  if (!res.headersSent) res.json({ ok: true });
+}));
 app.post('/tournaments/:id/reset', auth, admin, route(async (req, res) => {
   const tid = Number(req.params.id), tournament = await one<Row>('SELECT id,name FROM tournaments WHERE id=$1', [tid]); if (!tournament) { res.status(404).json({ message: 'Không tìm thấy giải' }); return; }
   const matchCount = Number((await one<Row>('SELECT COUNT(*)::int n FROM matches WHERE tournament_id=$1', [tid]))!.n);
