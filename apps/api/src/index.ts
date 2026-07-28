@@ -82,12 +82,16 @@ app.get('/dashboard', route(async (req, res) => {
   const [tournaments, teams, matches, history] = await Promise.all([
     all<Row>('SELECT id,name,status,start_at,created_at FROM tournaments ORDER BY id DESC'),
     all<Row>('SELECT * FROM teams ORDER BY active DESC,name'),
-    all<Row>(`SELECT m.*,a.name team_a_name,a.color team_a_color,b.name team_b_name,b.color team_b_color,w.name winner_name,
+    all<Row>(`SELECT m.id,m.tournament_id,m.round_no,m.position,m.team_a_id,m.team_b_id,m.score_a,m.score_b,
+      CASE WHEN $2::boolean THEN m.handicap_a ELSE NULL END handicap_a,
+      CASE WHEN $2::boolean THEN m.handicap_b ELSE NULL END handicap_b,
+      m.scheduled_at,m.status,m.voting_locked,m.winner_id,m.next_match_id,m.next_slot,
+      a.name team_a_name,a.color team_a_color,b.name team_b_name,b.color team_b_color,w.name winner_name,
       (SELECT COUNT(*)::int FROM votes v WHERE v.match_id=m.id AND v.team_id=m.team_a_id) votes_a,
       (SELECT COUNT(*)::int FROM votes v WHERE v.match_id=m.id AND v.team_id=m.team_b_id) votes_b,
       (SELECT team_id FROM votes v WHERE v.match_id=m.id AND v.user_id=$1) my_vote
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
-      ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor?.id ?? null]),
+      ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor?.id ?? null, Boolean(req.actor)]),
     all<Row>(`SELECT h.id history_id,h.tournament_name,h.archived_at,m.id,m.round_no,m.position,
       COALESCE(h.max_round,MAX(m.round_no) OVER (PARTITION BY h.id))::int max_round,
       m.team_a_name,m.team_a_captain,m.team_b_name,m.team_b_captain,m.score_a,m.score_b,m.winner_name,m.status
