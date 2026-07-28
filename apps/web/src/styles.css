@@ -79,3 +79,11 @@ small.responsive-label{display:none}
  .current-team .team-dot{display:none}
  .current-actions button{width:38px;height:38px}
 }
+
+.leader-row{grid-template-columns:80px minmax(0,1fr) 120px}
+.leader-row>strong,.leader-header>span:last-child{justify-self:end;text-align:right}
+.leader-user,.leader-user>span{min-width:0}
+.leader-user b,.leader-user small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:650px){
+ .leader-row{grid-template-columns:44px minmax(0,1fr) 76px}
+}
