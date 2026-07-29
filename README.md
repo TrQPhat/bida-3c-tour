@@ -52,6 +52,7 @@ Mở `http://localhost:5173`. API cần kết nối được tới PostgreSQL đ
 - Reset giải chỉ lưu lịch sử các trận đã xác định đủ hai đội, sau đó xóa bracket, tỷ số và bình chọn. Huỷ giải cũng dọn dữ liệu hiện tại nhưng không lưu lịch sử. Danh sách đội và lịch sử bốc thăm gần nhất vẫn được giữ để lần tạo lại không lặp nguyên cách xếp trước đó.
 - Bracket hỗ trợ mọi số lượng từ 2 đội: 2 đội vào thẳng chung kết, số đội không đủ lũy thừa 2 được bổ sung BYE và tự động tiến vòng.
 - Điểm chấp hỗ trợ số thập phân như `0.5`, `1.5`.
+- User phải xác nhận trước khi gửi hoặc đổi vote và không thể tự xoá vote; admin có thể xoá vote chọn nhầm trong màn hình thống kê, kể cả hoàn tác điểm đã chấm.
 - Điểm dự đoán được tích lũy theo user qua nhiều giải đấu; reset giải không xóa bảng xếp hạng. Admin reset điểm tuần bằng thao tác riêng sau khi đã lưu/reset giải hiện tại.
 - Dữ liệu được lưu trong PostgreSQL; môi trường deploy dự kiến dùng Neon.
 

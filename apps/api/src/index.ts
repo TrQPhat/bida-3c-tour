@@ -251,6 +251,28 @@ app.get('/matches/:id/votes', auth, admin, route(async (req, res) => {
   if (!match) { res.status(404).json({ message: 'Không tìm thấy trận' }); return; }
   const votes = await all<Row>('SELECT v.user_id,v.team_id,v.awarded,v.created_at,u.username,u.display_name,t.name team_name FROM votes v JOIN users u ON u.id=v.user_id JOIN teams t ON t.id=v.team_id WHERE v.match_id=$1 ORDER BY v.created_at DESC,u.display_name', [id]); res.json({ match, votes });
 }));
+app.delete('/matches/:matchId/votes/:userId', auth, admin, route(async (req, res) => {
+  const matchId = Number(req.params.matchId), userId = Number(req.params.userId);
+  if (!Number.isInteger(matchId) || matchId < 1 || !Number.isInteger(userId) || userId < 1) { res.status(400).json({ message: 'Thông tin vote không hợp lệ' }); return; }
+  const removed = await transaction(async (client) => {
+    const vote = (await client.query('SELECT user_id,match_id,awarded FROM votes WHERE user_id=$1 AND match_id=$2 FOR UPDATE', [userId, matchId])).rows[0];
+    if (!vote) return false;
+    if (vote.awarded != null) {
+      const awarded = Number(vote.awarded);
+      await client.query(`UPDATE user_prediction_scores SET
+        points=points-$1,
+        correct=GREATEST(correct-$2,0),
+        wrong=GREATEST(wrong-$3,0),
+        scored_votes=GREATEST(scored_votes-1,0),
+        updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=$4`, [awarded, awarded === 1 ? 1 : 0, awarded === -1 ? 1 : 0, userId]);
+    }
+    await client.query('DELETE FROM votes WHERE user_id=$1 AND match_id=$2', [userId, matchId]);
+    return true;
+  });
+  if (!removed) { res.status(404).json({ message: 'Không tìm thấy vote cần xoá' }); return; }
+  res.json({ ok: true });
+}));
 app.post('/matches/:id/vote', auth, route(async (req, res) => {
   if (req.actor!.role !== 'user') { res.status(403).json({ message: 'Chỉ tài khoản user được bình chọn' }); return; }
   const id = Number(req.params.id), team = Number(req.body.teamId), m = await one<Row>('SELECT * FROM matches WHERE id=$1', [id]);

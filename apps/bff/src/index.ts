@@ -48,6 +48,7 @@ app.post('/bff/tournaments/:id/reset',auth,csrf,admin,(req,res)=>relay(res,call(
 app.post('/bff/tournaments/:id/cancel',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/cancel`,req,req.body)));
 app.patch('/bff/matches/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}`,req,req.body)));
 app.get('/bff/matches/:id/votes',auth,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}/votes`,req)));
+app.delete('/bff/matches/:matchId/votes/:userId',auth,csrf,admin,(req,res)=>relay(res,call(`/matches/${req.params.matchId}/votes/${req.params.userId}`,req)));
 app.post('/bff/matches/:id/vote',auth,csrf,(req,res)=>relay(res,call(`/matches/${req.params.id}/vote`,req,req.body)));
 if(process.env.NODE_ENV==='production'){const web=resolve(dirname(fileURLToPath(import.meta.url)),'../../web/dist');app.use(express.static(web));app.get('/{*splat}',(_req,res)=>res.sendFile(resolve(web,'index.html')))}
 const port=Number(process.env.PORT||process.env.BFF_PORT||4000);
