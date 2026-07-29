@@ -117,3 +117,56 @@ small.responsive-label{display:none}
  .vote-policy{font-size:10px;text-align:left}
  .delete-vote{width:38px;height:38px}
 }
+.vote-history-section{background:#e9eee8}
+.vote-history-section>.section-head>svg{color:#739b18}
+.vote-history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.vote-history-card{border:1px solid #d5ddd7;background:#fff;color:#18372d;display:grid;grid-template-columns:44px minmax(0,1fr) auto 20px;align-items:center;gap:13px;padding:17px;text-align:left;box-shadow:0 7px 20px #17382d0b}
+.vote-history-card:hover{border-color:#93b83c;background:#f9ffed}
+.vote-history-icon{width:42px;height:42px;background:#eaffbd;color:#5f8513;display:grid;place-items:center}
+.vote-history-copy,.vote-history-count{min-width:0}
+.vote-history-copy b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vote-history-copy small,.vote-history-count small{display:block;color:#65776f;font-size:10px;margin-top:3px}
+.vote-history-count{text-align:right}.vote-history-count b{font:800 23px 'Barlow Condensed'}
+.vote-history-card>svg{color:#71847b}
+.vote-history-modal{width:min(980px,100%);max-height:92vh;overflow-y:auto}
+.vote-history-modal>h2{padding-right:32px}
+.vote-history-filter{display:flex!important;align-items:center;justify-content:flex-end;gap:10px;margin:15px 0!important}
+.vote-history-filter select{min-width:230px;padding:10px 34px 10px 11px;border:1px solid #c7d1cb;background:#fff;color:#254238}
+.vote-history-matches{display:grid;gap:16px;margin-top:24px}
+.vote-history-match{border:1px solid #d9e0db;background:#fff}
+.vote-history-match-head{padding:15px 17px;background:#18372d;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.vote-history-match-head>span:first-child b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.7px}
+.vote-history-match-head>span:first-child small{display:block;color:#afbeb8;font-size:10px;margin-top:3px}
+.vote-history-matchup{display:grid;grid-template-columns:minmax(90px,1fr) auto minmax(90px,1fr);align-items:center;gap:10px;text-align:center}
+.vote-history-matchup>b{font-size:12px;line-height:1.3}.vote-history-matchup>b>small{display:block;color:#ffae9f;font-size:9px;margin-top:2px}.vote-history-matchup>strong{font:800 22px 'Barlow Condensed';color:#c9ff47;white-space:nowrap}
+.vote-history-matchup>small{grid-column:1/-1;color:#b8c8c1;font-size:9px}
+.vote-history-voter{display:grid;grid-template-columns:34px minmax(150px,1fr) minmax(130px,.8fr) 92px;align-items:center;gap:11px;padding:12px 16px;border-bottom:1px solid #e8ece9}
+.vote-history-voter:last-child{border-bottom:0}.vote-history-voter.removed{background:#f3f3f0}
+.vote-history-user{min-width:0}.vote-history-user b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vote-history-user small{display:block;color:#6c7e76;font-size:9px;margin-top:2px}
+.vote-history-choice{font-size:11px;color:#62746c}.vote-history-choice b{color:#25483c}
+.vote-history-award{justify-self:end;font-size:10px;font-weight:800;white-space:nowrap}.vote-history-award.correct{color:#527b0e}.vote-history-award.wrong{color:#a64335}
+.vote-history-removed{grid-column:2/-1;color:#9a4d40;font-size:9px}
+@media(max-width:800px){
+ .vote-history-grid{grid-template-columns:1fr}
+ .vote-history-match-head{align-items:flex-start;flex-direction:column}
+ .vote-history-matchup{width:100%}
+ .vote-history-voter{grid-template-columns:34px minmax(0,1fr) 90px}
+ .vote-history-choice{grid-column:2}.vote-history-award{grid-column:3;grid-row:1/3}
+ .vote-history-removed{grid-column:2/-1}
+}
+@media(max-width:560px){
+ .vote-history-card{grid-template-columns:40px minmax(0,1fr) 18px;padding:14px;gap:10px}
+ .vote-history-icon{width:38px;height:38px}
+ .vote-history-count{grid-column:2;text-align:left}
+ .vote-history-card>svg{grid-column:3;grid-row:1/3}
+ .vote-history-modal{padding:28px 16px}
+ .vote-history-filter{align-items:stretch;flex-direction:column}
+ .vote-history-filter select{min-width:0;width:100%}
+ .vote-history-match-head{padding:13px}
+ .vote-history-matchup{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:7px}
+ .vote-history-matchup>b{overflow-wrap:anywhere}
+ .vote-history-voter{grid-template-columns:31px minmax(0,1fr) auto;padding:11px 10px;gap:9px}
+ .vote-history-choice{grid-column:2/-1}
+ .vote-history-award{grid-column:3;grid-row:1/3}
+ .vote-history-removed{grid-column:2/-1}
+}

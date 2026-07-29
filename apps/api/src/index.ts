@@ -19,6 +19,48 @@ const vietnamDateAt1230 = (value: string | Date) => {
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
   return new Date(`${get('year')}-${get('month')}-${get('day')}T12:30:00+07:00`);
 };
+const syncTournamentVoteHistory = async (client: PoolClient, tournamentId: number) => {
+  const tournament = (await client.query("SELECT id,name,status FROM tournaments WHERE id=$1 AND status='finished'", [tournamentId])).rows[0];
+  if (!tournament) return;
+  const finalMatch = (await client.query("SELECT id FROM matches WHERE tournament_id=$1 AND next_match_id IS NULL AND status='finished' ORDER BY round_no DESC LIMIT 1", [tournamentId])).rows[0];
+  if (!finalMatch) return;
+  const maxRound = Number((await client.query('SELECT COALESCE(MAX(round_no),1)::int max_round FROM matches WHERE tournament_id=$1', [tournamentId])).rows[0].max_round);
+  const history = (await client.query(`INSERT INTO tournament_vote_history(source_tournament_id,source_final_match_id,tournament_name,max_round)
+    VALUES($1,$2,$3,$4)
+    ON CONFLICT(source_final_match_id) DO UPDATE SET tournament_name=EXCLUDED.tournament_name,max_round=EXCLUDED.max_round,updated_at=CURRENT_TIMESTAMP
+    RETURNING id`, [tournamentId, finalMatch.id, tournament.name, maxRound])).rows[0];
+  await client.query(`INSERT INTO vote_history_entries(
+      vote_history_id,source_match_id,round_no,position,scheduled_at,
+      team_a_source_id,team_a_name,team_b_source_id,team_b_name,score_a,score_b,handicap_a,handicap_b,winner_source_id,winner_name,
+      source_user_id,username,display_name,voted_team_source_id,voted_team_name,awarded,voted_at)
+    SELECT $1,m.id,m.round_no,m.position,m.scheduled_at,
+      m.team_a_id,a.name,m.team_b_id,b.name,m.score_a,m.score_b,m.handicap_a,m.handicap_b,m.winner_id,w.name,
+      v.user_id,u.username,u.display_name,v.team_id,chosen.name,v.awarded,v.created_at
+    FROM votes v
+    JOIN matches m ON m.id=v.match_id
+    JOIN users u ON u.id=v.user_id
+    JOIN teams a ON a.id=m.team_a_id
+    JOIN teams b ON b.id=m.team_b_id
+    JOIN teams chosen ON chosen.id=v.team_id
+    LEFT JOIN teams w ON w.id=m.winner_id
+    WHERE m.tournament_id=$2
+    ON CONFLICT(vote_history_id,source_match_id,source_user_id) DO UPDATE SET
+      round_no=EXCLUDED.round_no,position=EXCLUDED.position,scheduled_at=EXCLUDED.scheduled_at,
+      team_a_source_id=EXCLUDED.team_a_source_id,team_a_name=EXCLUDED.team_a_name,
+      team_b_source_id=EXCLUDED.team_b_source_id,team_b_name=EXCLUDED.team_b_name,
+      score_a=EXCLUDED.score_a,score_b=EXCLUDED.score_b,handicap_a=EXCLUDED.handicap_a,handicap_b=EXCLUDED.handicap_b,
+      winner_source_id=EXCLUDED.winner_source_id,winner_name=EXCLUDED.winner_name,
+      username=EXCLUDED.username,display_name=EXCLUDED.display_name,
+      voted_team_source_id=EXCLUDED.voted_team_source_id,voted_team_name=EXCLUDED.voted_team_name,
+      awarded=EXCLUDED.awarded,voted_at=EXCLUDED.voted_at,updated_at=CURRENT_TIMESTAMP`, [history.id, tournamentId]);
+  await client.query(`UPDATE vote_history_entries e SET
+      score_a=m.score_a,score_b=m.score_b,handicap_a=m.handicap_a,handicap_b=m.handicap_b,
+      winner_source_id=m.winner_id,winner_name=w.name,
+      awarded=CASE WHEN m.winner_id IS NULL THEN e.awarded WHEN e.voted_team_source_id=m.winner_id THEN 1 ELSE -1 END,
+      updated_at=CURRENT_TIMESTAMP
+    FROM matches m LEFT JOIN teams w ON w.id=m.winner_id
+    WHERE e.vote_history_id=$1 AND e.source_match_id=m.id`, [history.id]);
+};
 
 const app = express();
 const internalApiKey = process.env.INTERNAL_API_KEY;
@@ -110,6 +152,35 @@ app.get('/leaderboard', route(async (req, res) => {
     FROM users u LEFT JOIN user_prediction_scores s ON s.user_id=u.id WHERE u.role='user'
     ORDER BY points DESC,correct DESC,LOWER(u.display_name) LIMIT $1 OFFSET $2`, [pageSize, (page - 1) * pageSize]);
   res.json({ items, page, pageSize, total, pages });
+}));
+app.get('/vote-history', auth, route(async (req, res) => {
+  const isAdmin = req.actor!.role === 'admin';
+  const items = await all<Row>(`SELECT h.id,h.tournament_name,h.max_round,h.completed_at,h.updated_at,
+    COUNT(e.id)::int vote_count,
+    COUNT(DISTINCT e.source_match_id)::int match_count,
+    COUNT(e.id) FILTER (WHERE e.removed_at IS NOT NULL)::int removed_vote_count
+    FROM tournament_vote_history h
+    LEFT JOIN vote_history_entries e ON e.vote_history_id=h.id AND ($1::boolean OR e.source_user_id=$2)
+    WHERE $1::boolean OR e.id IS NOT NULL
+    GROUP BY h.id ORDER BY h.completed_at DESC,h.id DESC LIMIT 20`, [isAdmin, req.actor!.id]);
+  res.json({ items });
+}));
+app.get('/vote-history/:id', auth, route(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: 'Lịch sử vote không hợp lệ' }); return; }
+  const isAdmin = req.actor!.role === 'admin';
+  const history = await one<Row>(`SELECT h.id,h.tournament_name,h.max_round,h.completed_at,h.updated_at
+    FROM tournament_vote_history h
+    WHERE h.id=$1 AND ($2::boolean OR EXISTS(
+      SELECT 1 FROM vote_history_entries e WHERE e.vote_history_id=h.id AND e.source_user_id=$3
+    ))`, [id, isAdmin, req.actor!.id]);
+  if (!history) { res.status(404).json({ message: 'Không tìm thấy lịch sử vote' }); return; }
+  const entries = await all<Row>(`SELECT id,source_match_id,round_no,position,scheduled_at,
+    team_a_name,team_b_name,score_a,score_b,handicap_a,handicap_b,winner_name,
+    source_user_id,username,display_name,voted_team_name,awarded,voted_at,removed_at
+    FROM vote_history_entries WHERE vote_history_id=$1 AND ($2::boolean OR source_user_id=$3)
+    ORDER BY round_no,position,source_match_id,LOWER(display_name),source_user_id`, [id, isAdmin, req.actor!.id]);
+  res.json({ history, entries });
 }));
 app.post('/leaderboard/reset', auth, admin, route(async (_req, res) => {
   const pendingHistory = Number((await one<Row>('SELECT COUNT(*)::int n FROM votes WHERE awarded IS NOT NULL'))!.n);
@@ -243,7 +314,7 @@ app.patch('/matches/:id', auth, admin, route(async (req, res) => {
   await transaction(async (client) => {
     await client.query('UPDATE matches SET handicap_a=$1,handicap_b=$2,scheduled_at=COALESCE($3,scheduled_at),voting_locked=COALESCE($4,voting_locked),hidden=COALESCE($5,hidden) WHERE id=$6', [hA, hB, scheduledAt ?? null, votingLocked == null ? null : Boolean(votingLocked), hidden == null ? null : Boolean(hidden), id]);
     if (scoreA != null && scoreB != null) { const winner = finalA > finalB ? m.team_a_id : m.team_b_id; await client.query("UPDATE matches SET score_a=$1,score_b=$2,winner_id=$3,status='finished',voting_locked=TRUE WHERE id=$4", [scoreA, scoreB, winner, id]); const scored=(await client.query('SELECT user_id,awarded,CASE WHEN team_id=$1 THEN 1 ELSE -1 END new_awarded FROM votes WHERE match_id=$2 FOR UPDATE',[winner,id])).rows;for(const vote of scored){const oldAward=vote.awarded==null?null:Number(vote.awarded),newAward=Number(vote.new_awarded);await client.query('UPDATE votes SET awarded=$1 WHERE user_id=$2 AND match_id=$3',[newAward,vote.user_id,id]);await client.query(`INSERT INTO user_prediction_scores(user_id,points,correct,wrong,scored_votes) VALUES($1,$2,$3,$4,$5)
-      ON CONFLICT(user_id) DO UPDATE SET points=user_prediction_scores.points+EXCLUDED.points,correct=user_prediction_scores.correct+EXCLUDED.correct,wrong=user_prediction_scores.wrong+EXCLUDED.wrong,scored_votes=user_prediction_scores.scored_votes+EXCLUDED.scored_votes,updated_at=CURRENT_TIMESTAMP`,[vote.user_id,newAward-(oldAward??0),(newAward===1?1:0)-(oldAward===1?1:0),(newAward===-1?1:0)-(oldAward===-1?1:0),oldAward==null?1:0]);} if (m.next_match_id) await client.query(`UPDATE matches SET ${m.next_slot === 'a' ? 'team_a_id' : 'team_b_id'}=$1 WHERE id=$2`, [winner, m.next_match_id]); else await client.query("UPDATE tournaments SET status='finished' WHERE id=$1", [m.tournament_id]); }
+      ON CONFLICT(user_id) DO UPDATE SET points=user_prediction_scores.points+EXCLUDED.points,correct=user_prediction_scores.correct+EXCLUDED.correct,wrong=user_prediction_scores.wrong+EXCLUDED.wrong,scored_votes=user_prediction_scores.scored_votes+EXCLUDED.scored_votes,updated_at=CURRENT_TIMESTAMP`,[vote.user_id,newAward-(oldAward??0),(newAward===1?1:0)-(oldAward===1?1:0),(newAward===-1?1:0)-(oldAward===-1?1:0),oldAward==null?1:0]);} if (m.next_match_id) await client.query(`UPDATE matches SET ${m.next_slot === 'a' ? 'team_a_id' : 'team_b_id'}=$1 WHERE id=$2`, [winner, m.next_match_id]); else await client.query("UPDATE tournaments SET status='finished' WHERE id=$1", [m.tournament_id]); await syncTournamentVoteHistory(client, Number(m.tournament_id)); }
   }); res.json({ ok: true });
 }));
 app.get('/matches/:id/votes', auth, admin, route(async (req, res) => {
@@ -267,6 +338,7 @@ app.delete('/matches/:matchId/votes/:userId', auth, admin, route(async (req, res
         updated_at=CURRENT_TIMESTAMP
         WHERE user_id=$4`, [awarded, awarded === 1 ? 1 : 0, awarded === -1 ? 1 : 0, userId]);
     }
+    await client.query('UPDATE vote_history_entries SET removed_at=COALESCE(removed_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE source_match_id=$1 AND source_user_id=$2', [matchId, userId]);
     await client.query('DELETE FROM votes WHERE user_id=$1 AND match_id=$2', [userId, matchId]);
     return true;
   });

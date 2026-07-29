@@ -34,6 +34,8 @@ app.patch('/bff/profile',auth,csrf,async(req,res)=>{try{const r=await call('/pro
 app.get('/bff/dashboard',(req,res)=>relay(res,call('/dashboard',req)));
 app.get('/bff/leaderboard',(req,res)=>relay(res,call(`/leaderboard?page=${encodeURIComponent(String(req.query.page||'1'))}`,req)));
 app.post('/bff/leaderboard/reset',auth,csrf,admin,(req,res)=>relay(res,call('/leaderboard/reset',req,req.body)));
+app.get('/bff/vote-history',auth,(req,res)=>relay(res,call('/vote-history',req)));
+app.get('/bff/vote-history/:id',auth,(req,res)=>relay(res,call(`/vote-history/${req.params.id}`,req)));
 app.get('/bff/users',auth,admin,(req,res)=>relay(res,call('/users',req)));
 app.post('/bff/users',auth,csrf,admin,(req,res)=>relay(res,call('/users',req,req.body)));
 app.patch('/bff/users/:id',auth,csrf,admin,async(req,res)=>{try{const r=await call(`/users/${req.params.id}`,req,req.body),data=await r.json() as any;if(!r.ok)return res.status(r.status).json(data);if(Number(req.params.id)===req.session!.user.id){const session:Session={user:data,csrf:req.session!.csrf};setSession(res,session)}res.json(data)}catch{res.status(502).json({message:'Dịch vụ tạm thời không khả dụng'})}});
