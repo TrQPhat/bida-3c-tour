@@ -87,3 +87,7 @@ small.responsive-label{display:none}
 @media(max-width:650px){
  .leader-row{grid-template-columns:44px minmax(0,1fr) 76px}
 }
+
+.match-list-tools{flex-wrap:wrap;justify-content:flex-end}
+.current-match-row.hidden-match{background:#f1f3ef;opacity:.7;border-style:dashed}
+.hidden-match .current-status>b{color:#9a4d40}

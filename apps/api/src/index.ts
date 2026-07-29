@@ -85,13 +85,14 @@ app.get('/dashboard', route(async (req, res) => {
     all<Row>(`SELECT m.id,m.tournament_id,m.round_no,m.position,m.team_a_id,m.team_b_id,m.score_a,m.score_b,
       CASE WHEN $2::boolean THEN m.handicap_a ELSE NULL END handicap_a,
       CASE WHEN $2::boolean THEN m.handicap_b ELSE NULL END handicap_b,
-      m.scheduled_at,m.status,m.voting_locked,m.winner_id,m.next_match_id,m.next_slot,
+      m.scheduled_at,m.status,m.voting_locked,m.hidden,m.winner_id,m.next_match_id,m.next_slot,
       a.name team_a_name,a.color team_a_color,b.name team_b_name,b.color team_b_color,w.name winner_name,
       (SELECT COUNT(*)::int FROM votes v WHERE v.match_id=m.id AND v.team_id=m.team_a_id) votes_a,
       (SELECT COUNT(*)::int FROM votes v WHERE v.match_id=m.id AND v.team_id=m.team_b_id) votes_b,
       (SELECT team_id FROM votes v WHERE v.match_id=m.id AND v.user_id=$1) my_vote
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
-      ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor?.id ?? null, Boolean(req.actor)]),
+      WHERE m.hidden=FALSE OR $3::boolean
+      ORDER BY m.tournament_id DESC,m.round_no,m.position`, [req.actor?.id ?? null, Boolean(req.actor), req.actor?.role === 'admin']),
     all<Row>(`SELECT h.id history_id,h.tournament_name,h.archived_at,m.id,m.round_no,m.position,
       COALESCE(h.max_round,MAX(m.round_no) OVER (PARTITION BY h.id))::int max_round,
       m.team_a_name,m.team_a_captain,m.team_b_name,m.team_b_captain,m.score_a,m.score_b,m.winner_name,m.status
@@ -179,14 +180,14 @@ app.patch('/tournaments/:id/pairings', auth, admin, route(async (req, res) => {
     if (voteCount || playedCount) {
       const error: any = new Error('Không thể đổi cặp sau khi đã có bình chọn hoặc kết quả thi đấu'); error.status = 409; throw error;
     }
-    await client.query("UPDATE matches SET team_a_id=NULL,team_b_id=NULL,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,handicap_a=0,handicap_b=0 WHERE tournament_id=$1 AND round_no>1", [tid]);
+    await client.query("UPDATE matches SET team_a_id=NULL,team_b_id=NULL,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,hidden=FALSE,handicap_a=0,handicap_b=0 WHERE tournament_id=$1 AND round_no>1", [tid]);
     let index = 0;
     const signature: number[] = [];
     for (const match of firstRound) {
       const teamA = match.team_a_id == null ? null : teamIds[index++];
       const teamB = match.team_b_id == null ? null : teamIds[index++];
       signature.push(teamA ?? 0, teamB ?? 0);
-      await client.query("UPDATE matches SET team_a_id=$1,team_b_id=$2,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,handicap_a=0,handicap_b=0 WHERE id=$3", [teamA, teamB, match.id]);
+      await client.query("UPDATE matches SET team_a_id=$1,team_b_id=$2,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,hidden=FALSE,handicap_a=0,handicap_b=0 WHERE id=$3", [teamA, teamB, match.id]);
       if ((teamA == null) !== (teamB == null)) {
         const winner = teamA ?? teamB;
         await client.query("UPDATE matches SET winner_id=$1,status='bye' WHERE id=$2", [winner, match.id]);
@@ -235,12 +236,12 @@ app.post('/tournaments/:id/cancel', auth, admin, route(async (req, res) => {
 }));
 app.patch('/matches/:id', auth, admin, route(async (req, res) => {
   const id = Number(req.params.id), m = await one<Row>('SELECT * FROM matches WHERE id=$1', [id]); if (!m) { res.status(404).json({ message: 'Không tìm thấy trận' }); return; }
-  const { handicapA, handicapB, scheduledAt, scoreA, scoreB, votingLocked } = req.body, hA = Number(handicapA ?? m.handicap_a), hB = Number(handicapB ?? m.handicap_b);
+  const { handicapA, handicapB, scheduledAt, scoreA, scoreB, votingLocked, hidden } = req.body, hA = Number(handicapA ?? m.handicap_a), hB = Number(handicapB ?? m.handicap_b);
   if (!Number.isFinite(hA) || !Number.isFinite(hB) || hA < 0 || hB < 0) { res.status(400).json({ message: 'Điểm chấp phải là số không âm' }); return; }
   if (scoreA != null && scoreB != null && (!m.team_a_id || !m.team_b_id)) { res.status(400).json({ message: 'Trận đấu chưa đủ hai đội' }); return; }
   const finalA = Number(scoreA) + hA, finalB = Number(scoreB) + hB; if (scoreA != null && scoreB != null && finalA === finalB) { res.status(400).json({ message: 'Tổng điểm sau chấp không được hòa' }); return; }
   await transaction(async (client) => {
-    await client.query('UPDATE matches SET handicap_a=$1,handicap_b=$2,scheduled_at=COALESCE($3,scheduled_at),voting_locked=COALESCE($4,voting_locked) WHERE id=$5', [hA, hB, scheduledAt ?? null, votingLocked == null ? null : Boolean(votingLocked), id]);
+    await client.query('UPDATE matches SET handicap_a=$1,handicap_b=$2,scheduled_at=COALESCE($3,scheduled_at),voting_locked=COALESCE($4,voting_locked),hidden=COALESCE($5,hidden) WHERE id=$6', [hA, hB, scheduledAt ?? null, votingLocked == null ? null : Boolean(votingLocked), hidden == null ? null : Boolean(hidden), id]);
     if (scoreA != null && scoreB != null) { const winner = finalA > finalB ? m.team_a_id : m.team_b_id; await client.query("UPDATE matches SET score_a=$1,score_b=$2,winner_id=$3,status='finished',voting_locked=TRUE WHERE id=$4", [scoreA, scoreB, winner, id]); const scored=(await client.query('SELECT user_id,awarded,CASE WHEN team_id=$1 THEN 1 ELSE -1 END new_awarded FROM votes WHERE match_id=$2 FOR UPDATE',[winner,id])).rows;for(const vote of scored){const oldAward=vote.awarded==null?null:Number(vote.awarded),newAward=Number(vote.new_awarded);await client.query('UPDATE votes SET awarded=$1 WHERE user_id=$2 AND match_id=$3',[newAward,vote.user_id,id]);await client.query(`INSERT INTO user_prediction_scores(user_id,points,correct,wrong,scored_votes) VALUES($1,$2,$3,$4,$5)
       ON CONFLICT(user_id) DO UPDATE SET points=user_prediction_scores.points+EXCLUDED.points,correct=user_prediction_scores.correct+EXCLUDED.correct,wrong=user_prediction_scores.wrong+EXCLUDED.wrong,scored_votes=user_prediction_scores.scored_votes+EXCLUDED.scored_votes,updated_at=CURRENT_TIMESTAMP`,[vote.user_id,newAward-(oldAward??0),(newAward===1?1:0)-(oldAward===1?1:0),(newAward===-1?1:0)-(oldAward===-1?1:0),oldAward==null?1:0]);} if (m.next_match_id) await client.query(`UPDATE matches SET ${m.next_slot === 'a' ? 'team_a_id' : 'team_b_id'}=$1 WHERE id=$2`, [winner, m.next_match_id]); else await client.query("UPDATE tournaments SET status='finished' WHERE id=$1", [m.tournament_id]); }
   }); res.json({ ok: true });
