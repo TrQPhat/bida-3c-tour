@@ -19,16 +19,18 @@ const vietnamDateAt1230 = (value: string | Date) => {
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
   return new Date(`${get('year')}-${get('month')}-${get('day')}T12:30:00+07:00`);
 };
-const syncTournamentVoteHistory = async (client: PoolClient, tournamentId: number) => {
-  const tournament = (await client.query("SELECT id,name,status FROM tournaments WHERE id=$1 AND status='finished'", [tournamentId])).rows[0];
+const syncTournamentVoteHistory = async (client: PoolClient, tournamentId: number, endedEarly = false) => {
+  const tournament = (await client.query('SELECT id,name,status FROM tournaments WHERE id=$1', [tournamentId])).rows[0];
   if (!tournament) return;
-  const finalMatch = (await client.query("SELECT id FROM matches WHERE tournament_id=$1 AND next_match_id IS NULL AND status='finished' ORDER BY round_no DESC LIMIT 1", [tournamentId])).rows[0];
-  if (!finalMatch) return;
+  const finalMatch = (await client.query('SELECT id,status FROM matches WHERE tournament_id=$1 AND next_match_id IS NULL ORDER BY round_no DESC LIMIT 1', [tournamentId])).rows[0];
+  if (!finalMatch || (!endedEarly && (tournament.status !== 'finished' || finalMatch.status !== 'finished'))) return;
   const maxRound = Number((await client.query('SELECT COALESCE(MAX(round_no),1)::int max_round FROM matches WHERE tournament_id=$1', [tournamentId])).rows[0].max_round);
-  const history = (await client.query(`INSERT INTO tournament_vote_history(source_tournament_id,source_final_match_id,tournament_name,max_round)
-    VALUES($1,$2,$3,$4)
-    ON CONFLICT(source_final_match_id) DO UPDATE SET tournament_name=EXCLUDED.tournament_name,max_round=EXCLUDED.max_round,updated_at=CURRENT_TIMESTAMP
-    RETURNING id`, [tournamentId, finalMatch.id, tournament.name, maxRound])).rows[0];
+  const history = (await client.query(`INSERT INTO tournament_vote_history(source_tournament_id,source_final_match_id,tournament_name,max_round,ended_early)
+    VALUES($1,$2,$3,$4,$5)
+    ON CONFLICT(source_final_match_id) DO UPDATE SET
+      tournament_name=EXCLUDED.tournament_name,max_round=EXCLUDED.max_round,
+      ended_early=tournament_vote_history.ended_early OR EXCLUDED.ended_early,updated_at=CURRENT_TIMESTAMP
+    RETURNING id`, [tournamentId, finalMatch.id, tournament.name, maxRound, endedEarly])).rows[0];
   await client.query(`INSERT INTO vote_history_entries(
       vote_history_id,source_match_id,round_no,position,scheduled_at,
       team_a_source_id,team_a_name,team_b_source_id,team_b_name,score_a,score_b,handicap_a,handicap_b,winner_source_id,winner_name,
@@ -43,7 +45,7 @@ const syncTournamentVoteHistory = async (client: PoolClient, tournamentId: numbe
     JOIN teams b ON b.id=m.team_b_id
     JOIN teams chosen ON chosen.id=v.team_id
     LEFT JOIN teams w ON w.id=m.winner_id
-    WHERE m.tournament_id=$2
+    WHERE m.tournament_id=$2 AND m.status='finished' AND v.awarded IS NOT NULL
     ON CONFLICT(vote_history_id,source_match_id,source_user_id) DO UPDATE SET
       round_no=EXCLUDED.round_no,position=EXCLUDED.position,scheduled_at=EXCLUDED.scheduled_at,
       team_a_source_id=EXCLUDED.team_a_source_id,team_a_name=EXCLUDED.team_a_name,
@@ -155,21 +157,40 @@ app.get('/leaderboard', route(async (req, res) => {
 }));
 app.get('/vote-history', auth, route(async (req, res) => {
   const isAdmin = req.actor!.role === 'admin';
-  const items = await all<Row>(`SELECT h.id,h.tournament_name,h.max_round,h.completed_at,h.updated_at,
-    COUNT(e.id)::int vote_count,
-    COUNT(DISTINCT e.source_match_id)::int match_count,
-    COUNT(e.id) FILTER (WHERE e.removed_at IS NOT NULL)::int removed_vote_count
-    FROM tournament_vote_history h
-    LEFT JOIN vote_history_entries e ON e.vote_history_id=h.id AND ($1::boolean OR e.source_user_id=$2)
-    WHERE $1::boolean OR e.id IS NOT NULL
-    GROUP BY h.id ORDER BY h.completed_at DESC,h.id DESC LIMIT 20`, [isAdmin, req.actor!.id]);
-  res.json({ items });
+  const requestedPage = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1), pageSize = 10;
+  const rawUserId = req.query.userId == null || req.query.userId === '' ? null : Number(req.query.userId);
+  if (isAdmin && rawUserId != null && (!Number.isInteger(rawUserId) || rawUserId < 1)) {
+    res.status(400).json({ message: 'Người chơi cần lọc không hợp lệ' }); return;
+  }
+  const filterUserId = isAdmin ? rawUserId : req.actor!.id;
+  const total = Number((await one<Row>(`SELECT COUNT(*)::int n FROM vote_history_entries
+    WHERE ($1::int IS NULL OR source_user_id=$1)`, [filterUserId]))!.n);
+  const pages = Math.max(1, Math.ceil(total / pageSize)), page = Math.min(requestedPage, pages);
+  const [items, users] = await Promise.all([
+    all<Row>(`SELECT
+      h.id vote_history_id,h.tournament_name,h.max_round,h.ended_early,h.completed_at,
+      e.id,e.source_match_id,e.round_no,e.position,e.scheduled_at,
+      e.team_a_name,e.team_b_name,e.score_a,e.score_b,e.handicap_a,e.handicap_b,e.winner_name,
+      e.source_user_id,e.username,e.display_name,e.voted_team_name,e.awarded,e.voted_at,e.removed_at
+      FROM vote_history_entries e
+      JOIN tournament_vote_history h ON h.id=e.vote_history_id
+      WHERE ($1::int IS NULL OR e.source_user_id=$1)
+      ORDER BY h.completed_at DESC,e.voted_at DESC,e.id DESC
+      LIMIT $2 OFFSET $3`, [filterUserId, pageSize, (page - 1) * pageSize]),
+    isAdmin ? all<Row>(`SELECT u.id,u.username,u.display_name,u.active
+      FROM users u
+      WHERE u.role='user' AND EXISTS(
+        SELECT 1 FROM vote_history_entries e WHERE e.source_user_id=u.id
+      )
+      ORDER BY LOWER(u.display_name),LOWER(u.username),u.id`) : Promise.resolve([]),
+  ]);
+  res.json({ items, users, page, pageSize, total, pages, userId: filterUserId });
 }));
 app.get('/vote-history/:id', auth, route(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: 'Lịch sử vote không hợp lệ' }); return; }
   const isAdmin = req.actor!.role === 'admin';
-  const history = await one<Row>(`SELECT h.id,h.tournament_name,h.max_round,h.completed_at,h.updated_at
+  const history = await one<Row>(`SELECT h.id,h.tournament_name,h.max_round,h.ended_early,h.completed_at,h.updated_at
     FROM tournament_vote_history h
     WHERE h.id=$1 AND ($2::boolean OR EXISTS(
       SELECT 1 FROM vote_history_entries e WHERE e.vote_history_id=h.id AND e.source_user_id=$3
@@ -184,7 +205,7 @@ app.get('/vote-history/:id', auth, route(async (req, res) => {
 }));
 app.post('/leaderboard/reset', auth, admin, route(async (_req, res) => {
   const pendingHistory = Number((await one<Row>('SELECT COUNT(*)::int n FROM votes WHERE awarded IS NOT NULL'))!.n);
-  if (pendingHistory) { res.status(409).json({ message: 'Hãy reset giải đấu hiện tại trước khi reset điểm tích lũy' }); return; }
+  if (pendingHistory) { res.status(409).json({ message: 'Hãy kết thúc hoặc huỷ giải đấu hiện tại trước khi reset điểm tích lũy' }); return; }
   await pool.query('UPDATE user_prediction_scores SET points=0,correct=0,wrong=0,scored_votes=0,updated_at=CURRENT_TIMESTAMP');
   res.json({ ok: true });
 }));
@@ -195,7 +216,7 @@ app.post('/teams', auth, admin, route(async (req, res) => {
 }));
 app.patch('/teams/:id', auth, admin, route(async (req, res) => {
   const id = Number(req.params.id);
-  if (req.body.active != null) { const used = Number((await one<Row>('SELECT COUNT(*)::int n FROM matches WHERE team_a_id=$1 OR team_b_id=$1', [id]))!.n); if (used) { res.status(409).json({ message: 'Hãy reset giải đấu trước khi đổi trạng thái đội đã được xếp lịch' }); return; } }
+  if (req.body.active != null) { const used = Number((await one<Row>('SELECT COUNT(*)::int n FROM matches WHERE team_a_id=$1 OR team_b_id=$1', [id]))!.n); if (used) { res.status(409).json({ message: 'Hãy kết thúc hoặc huỷ giải đấu trước khi đổi trạng thái đội đã được xếp lịch' }); return; } }
   const result = await pool.query('UPDATE teams SET name=COALESCE($1,name),captain=COALESCE($2,captain),color=COALESCE($3,color),active=COALESCE($4,active) WHERE id=$5', [req.body.name ?? null, req.body.captain ?? null, req.body.color ?? null, req.body.active == null ? null : Boolean(req.body.active), id]);
   if (!result.rowCount) { res.status(404).json({ message: 'Không tìm thấy đội' }); return; } res.json({ ok: true });
 }));
@@ -275,24 +296,37 @@ app.patch('/tournaments/:id/pairings', auth, admin, route(async (req, res) => {
   });
   if (!res.headersSent) res.json({ ok: true });
 }));
-app.post('/tournaments/:id/reset', auth, admin, route(async (req, res) => {
-  const tid = Number(req.params.id), tournament = await one<Row>('SELECT id,name FROM tournaments WHERE id=$1', [tid]); if (!tournament) { res.status(404).json({ message: 'Không tìm thấy giải' }); return; }
-  const matchSummary = (await one<Row>(`SELECT
-    COUNT(*) FILTER (WHERE team_a_id IS NOT NULL AND team_b_id IS NOT NULL)::int confirmed_count,
-    COALESCE(MAX(round_no),1)::int max_round
-    FROM matches WHERE tournament_id=$1`, [tid]))!;
-  const confirmedMatchCount = Number(matchSummary.confirmed_count);
-  if (!confirmedMatchCount) { res.status(409).json({ message: 'Giải chưa có cặp đấu đã xác định để lưu lịch sử' }); return; }
-  await transaction(async (client) => {
+app.post('/tournaments/:id/finish-early', auth, admin, route(async (req, res) => {
+  const tid = Number(req.params.id);
+  if (!Number.isInteger(tid) || tid < 1) { res.status(400).json({ message: 'Giải đấu không hợp lệ' }); return; }
+  const result = await transaction(async (client) => {
+    const tournament = (await client.query('SELECT id,name,status FROM tournaments WHERE id=$1 FOR UPDATE', [tid])).rows[0];
+    if (!tournament) { const error: any = new Error('Không tìm thấy giải'); error.status = 404; throw error; }
+    const matchSummary = (await client.query(`SELECT
+      COUNT(*) FILTER (WHERE status='finished')::int finished_count,
+      COALESCE(MAX(round_no),1)::int max_round
+      FROM matches WHERE tournament_id=$1`, [tid])).rows[0];
+    const finishedMatchCount = Number(matchSummary.finished_count);
+    if (!finishedMatchCount) { const error: any = new Error('Chưa có trận đã kết thúc để lưu. Hãy dùng Huỷ giải đấu nếu không muốn lưu lịch sử.'); error.status = 409; throw error; }
+    const archivedVoteCount = Number((await client.query(`SELECT COUNT(*)::int n FROM votes v
+      JOIN matches m ON m.id=v.match_id
+      WHERE m.tournament_id=$1 AND m.status='finished' AND v.awarded IS NOT NULL`, [tid])).rows[0].n);
+    const endedEarly = tournament.status !== 'finished';
+    await syncTournamentVoteHistory(client, tid, endedEarly);
     const archive = (await client.query('INSERT INTO tournament_history(source_tournament_id,tournament_name,max_round) VALUES($1,$2,$3) RETURNING id', [tid, tournament.name, matchSummary.max_round])).rows[0];
     await client.query(`INSERT INTO match_history(history_id,round_no,position,team_a_name,team_a_captain,team_b_name,team_b_captain,score_a,score_b,winner_name,status)
       SELECT $1,m.round_no,m.position,a.name,a.captain,b.name,b.captain,m.score_a,m.score_b,w.name,m.status
       FROM matches m LEFT JOIN teams a ON a.id=m.team_a_id LEFT JOIN teams b ON b.id=m.team_b_id LEFT JOIN teams w ON w.id=m.winner_id
-      WHERE m.tournament_id=$2 AND m.team_a_id IS NOT NULL AND m.team_b_id IS NOT NULL
+      WHERE m.tournament_id=$2 AND m.status='finished'
       ORDER BY m.round_no,m.position`, [archive.id, tid]);
     await client.query('DELETE FROM matches WHERE tournament_id=$1', [tid]);
     await client.query("UPDATE tournaments SET status='draft' WHERE id=$1", [tid]);
-  }); res.json({ ok: true, archivedMatches: confirmedMatchCount });
+    return { finishedMatchCount, archivedVoteCount, endedEarly };
+  }).catch((error: any) => {
+    if (error?.status) { res.status(error.status).json({ message: error.message }); return null; }
+    throw error;
+  });
+  if (result) res.json({ ok: true, archivedMatches: result.finishedMatchCount, archivedVotes: result.archivedVoteCount, endedEarly: result.endedEarly });
 }));
 app.post('/tournaments/:id/cancel', auth, admin, route(async (req, res) => {
   const tid = Number(req.params.id);

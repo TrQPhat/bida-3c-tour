@@ -1,0 +1,2 @@
+ALTER TABLE tournament_vote_history
+  ADD COLUMN IF NOT EXISTS ended_early BOOLEAN NOT NULL DEFAULT FALSE;

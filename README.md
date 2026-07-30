@@ -49,12 +49,12 @@ Mở `http://localhost:5173`. API cần kết nối được tới PostgreSQL đ
 - User chỉ đọc giải đấu/trận đấu và bình chọn. Admin quản trị tài khoản, đội, giải, lịch, chấp điểm và kết quả.
 - Admin có thể tạm tắt đội để loại khỏi lần bốc thăm tiếp theo mà không xóa dữ liệu đội.
 - Admin có thể ẩn các trận không diễn ra hoặc vào thẳng khỏi danh sách công khai và hiện lại khi cần; thao tác này không xóa dữ liệu trận.
-- Reset giải chỉ lưu lịch sử các trận đã xác định đủ hai đội, sau đó xóa bracket, tỷ số và bình chọn. Huỷ giải cũng dọn dữ liệu hiện tại nhưng không lưu lịch sử. Danh sách đội và lịch sử bốc thăm gần nhất vẫn được giữ để lần tạo lại không lặp nguyên cách xếp trước đó.
+- Kết thúc giải đấu sớm chỉ lưu lịch sử trận và log vote đã chấm của các trận `finished`, bỏ qua trận chưa đấu/BYE/không xảy ra, rồi dọn bracket hiện tại. Huỷ giải dọn toàn bộ dữ liệu hiện tại mà không lưu lịch sử. Danh sách đội và lịch sử bốc thăm gần nhất vẫn được giữ để lần tạo lại không lặp nguyên cách xếp trước đó.
 - Bracket hỗ trợ mọi số lượng từ 2 đội: 2 đội vào thẳng chung kết, số đội không đủ lũy thừa 2 được bổ sung BYE và tự động tiến vòng.
 - Điểm chấp hỗ trợ số thập phân như `0.5`, `1.5`.
 - User phải xác nhận trước khi gửi hoặc đổi vote và không thể tự xoá vote; admin có thể xoá vote chọn nhầm trong màn hình thống kê, kể cả hoàn tác điểm đã chấm.
-- Khi trận chung kết được chốt, hệ thống lưu bản audit toàn bộ vote của giải; user chỉ xem được lịch sử của chính mình, admin xem được toàn bộ và lọc theo từng người. Log không được tạo trong lúc giải đang diễn ra và vẫn còn sau khi reset giải.
-- Điểm dự đoán được tích lũy theo user qua nhiều giải đấu; reset giải không xóa bảng xếp hạng. Admin reset điểm tuần bằng thao tác riêng sau khi đã lưu/reset giải hiện tại.
+- Khi trận chung kết được chốt hoặc admin kết thúc giải sớm, hệ thống lưu audit vote đã chấm của các trận kết thúc và hiển thị từng lượt theo danh sách có phân trang; user chỉ xem vote của chính mình, admin xem toàn bộ và lọc theo từng người. Khi tài khoản bị xoá, ID liên kết chuyển thành `NULL` nhưng snapshot tên và lịch sử vote vẫn được giữ.
+- Điểm dự đoán được tích lũy theo user qua nhiều giải đấu; kết thúc hoặc huỷ giải không xóa bảng xếp hạng. Admin reset điểm tuần bằng thao tác riêng sau khi đã dọn giải hiện tại.
 - Dữ liệu được lưu trong PostgreSQL; môi trường deploy dự kiến dùng Neon.
 
 ## Production

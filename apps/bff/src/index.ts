@@ -34,7 +34,7 @@ app.patch('/bff/profile',auth,csrf,async(req,res)=>{try{const r=await call('/pro
 app.get('/bff/dashboard',(req,res)=>relay(res,call('/dashboard',req)));
 app.get('/bff/leaderboard',(req,res)=>relay(res,call(`/leaderboard?page=${encodeURIComponent(String(req.query.page||'1'))}`,req)));
 app.post('/bff/leaderboard/reset',auth,csrf,admin,(req,res)=>relay(res,call('/leaderboard/reset',req,req.body)));
-app.get('/bff/vote-history',auth,(req,res)=>relay(res,call('/vote-history',req)));
+app.get('/bff/vote-history',auth,(req,res)=>{const query=new URLSearchParams({page:String(req.query.page||'1')});if(req.query.userId!=null&&req.query.userId!=='')query.set('userId',String(req.query.userId));relay(res,call(`/vote-history?${query}`,req))});
 app.get('/bff/vote-history/:id',auth,(req,res)=>relay(res,call(`/vote-history/${req.params.id}`,req)));
 app.get('/bff/users',auth,admin,(req,res)=>relay(res,call('/users',req)));
 app.post('/bff/users',auth,csrf,admin,(req,res)=>relay(res,call('/users',req,req.body)));
@@ -46,7 +46,7 @@ app.delete('/bff/teams/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/teams/${
 app.post('/bff/tournaments',auth,csrf,admin,(req,res)=>relay(res,call('/tournaments',req,req.body)));
 app.post('/bff/tournaments/:id/generate',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/generate`,req,req.body)));
 app.patch('/bff/tournaments/:id/pairings',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/pairings`,req,req.body)));
-app.post('/bff/tournaments/:id/reset',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/reset`,req,req.body)));
+app.post('/bff/tournaments/:id/finish-early',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/finish-early`,req,req.body)));
 app.post('/bff/tournaments/:id/cancel',auth,csrf,admin,(req,res)=>relay(res,call(`/tournaments/${req.params.id}/cancel`,req,req.body)));
 app.patch('/bff/matches/:id',auth,csrf,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}`,req,req.body)));
 app.get('/bff/matches/:id/votes',auth,admin,(req,res)=>relay(res,call(`/matches/${req.params.id}/votes`,req)));
