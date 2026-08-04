@@ -273,14 +273,14 @@ app.patch('/tournaments/:id/pairings', auth, admin, route(async (req, res) => {
     if (voteCount || playedCount) {
       const error: any = new Error('Không thể đổi cặp sau khi đã có bình chọn hoặc kết quả thi đấu'); error.status = 409; throw error;
     }
-    await client.query("UPDATE matches SET team_a_id=NULL,team_b_id=NULL,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,hidden=FALSE,handicap_a=0,handicap_b=0 WHERE tournament_id=$1 AND round_no>1", [tid]);
+    await client.query("UPDATE matches SET team_a_id=NULL,team_b_id=NULL,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,handicap_a=0,handicap_b=0 WHERE tournament_id=$1 AND round_no>1", [tid]);
     let index = 0;
     const signature: number[] = [];
     for (const match of firstRound) {
       const teamA = match.team_a_id == null ? null : teamIds[index++];
       const teamB = match.team_b_id == null ? null : teamIds[index++];
       signature.push(teamA ?? 0, teamB ?? 0);
-      await client.query("UPDATE matches SET team_a_id=$1,team_b_id=$2,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,hidden=FALSE,handicap_a=0,handicap_b=0 WHERE id=$3", [teamA, teamB, match.id]);
+      await client.query("UPDATE matches SET team_a_id=$1,team_b_id=$2,winner_id=NULL,score_a=NULL,score_b=NULL,status='scheduled',voting_locked=FALSE,handicap_a=0,handicap_b=0 WHERE id=$3", [teamA, teamB, match.id]);
       if ((teamA == null) !== (teamB == null)) {
         const winner = teamA ?? teamB;
         await client.query("UPDATE matches SET winner_id=$1,status='bye' WHERE id=$2", [winner, match.id]);

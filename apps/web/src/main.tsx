@@ -49,7 +49,7 @@ function Login({onLogin,onView}:{onLogin:(u:User,c:string)=>void;onView:()=>void
 
 function MatchesTable({matches,maxRound,isAdmin,canVote,showHandicap,onVote,onEdit,onStats,onLock,onVisibility}:{matches:Match[];maxRound:number;isAdmin:boolean;canVote:boolean;showHandicap:boolean;onVote:(m:Match,id:number)=>void;onEdit:(m:Match)=>void;onStats:(m:Match)=>void;onLock:(m:Match)=>void;onVisibility:(m:Match)=>void}){
  return <div className="current-match-table">
-  <div className="current-match-row current-match-header"><span>Vòng đấu</span><span>Thời gian</span><span>Đội A</span><span>Tỷ số</span><span>Đội B</span><span>Trạng thái</span></div>
+  <div className="current-match-row current-match-header"><span>Vòng đấu</span><span>Đội A</span><span>Tỷ số</span><span>Đội B</span><span>Trạng thái</span></div>
   {[...matches].sort((a,b)=>a.round_no-b.round_no||a.position-b.position).map(m=>{
    const isBye=m.status==='bye',locked=!!m.voting_locked,total=m.votes_a+m.votes_b,hasVote=m.my_vote!=null;
    const team=(side:'a'|'b')=>{
@@ -60,7 +60,6 @@ function MatchesTable({matches,maxRound,isAdmin,canVote,showHandicap,onVote,onEd
    };
    return <article className={`current-match-row ${m.hidden?'hidden-match':''}`} key={m.id}>
     <span className="history-round current-match-meta">{roundName(m.round_no,maxRound)}<small>Trận {m.position}</small></span>
-    <span className="current-time">{m.scheduled_at?new Date(m.scheduled_at).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'Chờ lịch'}</span>
     {team('a')}
     <strong className="history-score current-match-score">{m.score_a??'–'} <i>:</i> {m.score_b??'–'}</strong>
     {team('b')}
