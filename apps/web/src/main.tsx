@@ -1,3 +1,880 @@
+// import React,{useEffect,useState} from 'react';
+// import{createRoot}from'react-dom/client';
+// import{LogOut,ShieldCheck,Trophy,Users,CalendarDays,Sparkles,Settings2,Vote,Plus,X,Check,Clock3,Trash2,RotateCcw,Power,BarChart3,LockKeyhole,LockKeyholeOpen,Medal,ChevronLeft,ChevronRight,Eye,EyeOff,UserCog,GripVertical,Flag,History as HistoryIcon}from'lucide-react';
+// import'./styles.css';
+
+// type User={id:number;username:string;displayName:string;role:'admin'|'user'|'viewer';active?:boolean};
+// type Team={id:number;name:string;captain:string;color:string;active:number};
+// type Tournament={id:number;name:string;status:string;start_at:string};
+// type Match={id:number;tournament_id:number;round_no:number;position:number;team_a_id:number|null;team_b_id:number|null;team_a_name:string|null;team_b_name:string|null;team_a_color:string;team_b_color:string;score_a:number|null;score_b:number|null;handicap_a:number|null;handicap_b:number|null;scheduled_at:string|null;status:string;voting_locked:number;hidden:boolean;winner_id:number|null;votes_a:number;votes_b:number;my_vote:number|null};
+// type HistoryMatch={history_id:number;tournament_name:string;archived_at:string;id:number;round_no:number;position:number;max_round:number;team_a_name:string|null;team_a_captain:string|null;team_b_name:string|null;team_b_captain:string|null;score_a:number|null;score_b:number|null;winner_name:string|null;status:string};
+// type VoteHistoryEntry={id:number;vote_history_id:number;tournament_name:string;max_round:number;ended_early:boolean;completed_at:string;source_match_id:number;round_no:number;position:number;scheduled_at:string|null;team_a_name:string;team_b_name:string;score_a:number|null;score_b:number|null;handicap_a:number;handicap_b:number;winner_name:string|null;source_user_id:number|null;username:string;display_name:string;voted_team_name:string;awarded:number|null;voted_at:string;removed_at:string|null};
+// type VoteHistoryUser={id:number;username:string;display_name:string;active:boolean};
+// type VoteHistoryData={items:VoteHistoryEntry[];users:VoteHistoryUser[];page:number;pageSize:number;total:number;pages:number;userId:number|null};
+// type Data={tournaments:Tournament[];teams:Team[];matches:Match[];history:HistoryMatch[]};
+// const roundName=(r:number,max:number)=>r===max?'CHUNG KẾT':r===max-1?'BÁN KẾT':r===max-2?'TỨ KẾT':`VÒNG ${r}`;
+
+// const viewer: User = {
+//   id: 0,
+//   username: "viewer",
+//   displayName: "Khách",
+//   role: "viewer",
+// };
+// function App() {
+//   const [user, setUser] = useState<User>(viewer),
+//     [csrf, setCsrf] = useState(""),
+//     [data, setData] = useState<Data | null>(null),
+//     [error, setError] = useState(""),
+//     [modal, setModal] = useState<string | null>(() => {
+//       const p = new URLSearchParams(window.location.search);
+
+//       return p.get("username") && p.get("password") ? "login" : null;
+//     }),
+//     [busy, setBusy] = useState(true),
+//     [showHiddenMatches, setShowHiddenMatches] = useState(false),
+//     [auditRevision, setAuditRevision] = useState(0);
+//   const request = async (path: string, init: RequestInit = {}) => {
+//     const r = await fetch("/bff" + path, {
+//       ...init,
+//       headers: {
+//         "content-type": "application/json",
+//         "x-csrf-token": csrf,
+//         ...init.headers,
+//       },
+//     });
+//     const d = await r.json();
+//     if (!r.ok) throw new Error(d.message || "Có lỗi xảy ra");
+//     return d;
+//   };
+//   const load = async () => {
+//     try {
+//       setData(await request("/dashboard"));
+//     } catch (e) {
+//       setError((e as Error).message);
+//     }
+//   };
+//   useEffect(() => {
+//     fetch("/bff/auth/me")
+//       .then(async (r) => {
+//         if (r.ok) {
+//           const s = await r.json();
+//           setUser(s.user);
+//           setCsrf(s.csrf);
+//         }
+//       })
+//       .finally(() => setBusy(false));
+//   }, []);
+//   useEffect(() => {
+//     load();
+//   }, [user]);
+//   if (busy)
+//     return (
+//       <div className="splash">
+//         <div className="brand-mark">3C</div>
+//       </div>
+//     );
+//   if (modal === "login")
+//     return (
+//       <Login
+//         onLogin={(u, c) => {
+//           setUser(u);
+//           setCsrf(c);
+//           setModal(null);
+//         }}
+//         onView={() => setModal(null)}
+//       />
+//     );
+//   const action = async (path: string, method: string, body?: unknown) => {
+//     if (user.role === "viewer") {
+//       setError("Vui lòng đăng nhập để thực hiện thao tác này");
+//       return;
+//     }
+//     setError("");
+//     try {
+//       await request(path, {
+//         method,
+//         body: body ? JSON.stringify(body) : undefined,
+//       });
+//       setModal(null);
+//       await load();
+//       setAuditRevision((value) => value + 1);
+//     } catch (e) {
+//       setError((e as Error).message);
+//     }
+//   };
+//   const vote = (match: Match, teamId: number) => {
+//     const teamName =
+//         teamId === match.team_a_id ? match.team_a_name : match.team_b_name,
+//       changing = match.my_vote != null && match.my_vote !== teamId,
+//       message = changing
+//         ? `Xác nhận đổi vote sang đội “${teamName}”?\n\nBạn không thể tự huỷ vote. Nếu cần xoá, hãy liên hệ admin.`
+//         : `Xác nhận vote cho đội “${teamName}”?\n\nSau khi gửi, bạn không thể tự huỷ vote. Khi vote còn mở, bạn vẫn có thể đổi sang đội còn lại hoặc liên hệ admin nếu cần xoá.`;
+//     if (window.confirm(message))
+//       void action(`/matches/${match.id}/vote`, "POST", { teamId });
+//   };
+//   const tournament = data?.tournaments[0],
+//     tournamentMatches =
+//       data?.matches.filter((m) => m.tournament_id === tournament?.id) || [],
+//     publicMatches = tournamentMatches.filter((m) => !m.hidden),
+//     hiddenMatchCount = tournamentMatches.length - publicMatches.length,
+//     matches = tournamentMatches.filter(
+//       (m) => !m.hidden || (user.role === "admin" && showHiddenMatches),
+//     ),
+//     finishedMatchCount = tournamentMatches.filter(
+//       (m) => m.status === "finished",
+//     ).length,
+//     maxRound = Math.max(1, ...tournamentMatches.map((m) => m.round_no)),
+//     activeTeams = data?.teams.filter((t) => t.active) || [],
+//     visibleTeams =
+//       user.role === "admin" ? data?.teams : data?.teams.filter((t) => t.active),
+//     canReorder = tournamentMatches.every(
+//       (m) => m.status !== "finished" && m.votes_a + m.votes_b === 0,
+//     );
+//   return (
+//     <div className="app">
+//       <header>
+//         <div className="brand">
+//           <span className="brand-mark small">3C</span>
+//           <div>
+//             <b>CUE ARENA</b>
+//             <small>TOURNAMENT SERIES</small>
+//           </div>
+//         </div>
+//         <nav>
+//           <a className="active">Giải đấu</a>
+//           <a href="#history">Lịch sử</a>
+//           {user.role !== "viewer" && <a href="#vote-history">Bình chọn</a>}
+//           {user.role === "admin" && <a href="#admin">Quản trị</a>}
+//         </nav>
+//         {user.role === "viewer" ? (
+//           <div className="account viewer-account">
+//             <span>
+//               <b>Khách</b>
+//               <small>Chỉ xem</small>
+//             </span>
+//             <button
+//               className="secondary dark"
+//               onClick={() => setModal("login")}
+//             >
+//               Đăng nhập
+//             </button>
+//           </div>
+//         ) : (
+//           <div className="account">
+//             <span>
+//               <b>{user.displayName}</b>
+//               <small>
+//                 {user.role === "admin" ? "Quản trị viên" : "Thành viên"}
+//               </small>
+//             </span>
+//             <span className="avatar">{user.displayName.charAt(0)}</span>
+//             <button
+//               className="icon"
+//               title="Hồ sơ cá nhân"
+//               onClick={() => setModal("profile")}
+//             >
+//               <UserCog size={18} />
+//             </button>
+//             <button
+//               className="icon"
+//               title="Đăng xuất"
+//               onClick={() =>
+//                 request("/auth/logout", { method: "POST" }).finally(() => {
+//                   setUser(viewer);
+//                   setCsrf("");
+//                 })
+//               }
+//             >
+//               <LogOut size={18} />
+//             </button>
+//           </div>
+//         )}
+//       </header>
+//       <main>
+//         <section className="hero">
+//           <div className="eyebrow">
+//             <span></span>{" "}
+//             {tournament?.status === "finished"
+//               ? "ĐÃ KẾT THÚC"
+//               : tournamentMatches.length
+//                 ? "ĐANG DIỄN RA"
+//                 : "CHỜ XẾP LỊCH"}
+//           </div>
+//           <h1>{tournament?.name || "Chưa có giải đấu"}</h1>
+//           <p>Đấu loại trực tiếp · {activeTeams.length} đội · Một nhà vô địch</p>
+//           <div className="hero-actions">
+//             <button
+//               className="primary"
+//               onClick={() =>
+//                 document
+//                   .querySelector("#matches")
+//                   ?.scrollIntoView({ behavior: "smooth" })
+//               }
+//             >
+//               Xem danh sách đấu <Trophy size={17} />
+//             </button>
+//             {user.role === "admin" &&
+//               tournament &&
+//               tournamentMatches.length === 0 && (
+//                 <button
+//                   className="secondary"
+//                   onClick={() =>
+//                     action(`/tournaments/${tournament.id}/generate`, "POST")
+//                   }
+//                 >
+//                   <Sparkles size={17} /> Tự động xếp lịch
+//                 </button>
+//               )}
+//             {user.role === "admin" &&
+//               tournament &&
+//               tournamentMatches.length > 0 && (
+//                 <>
+//                   <button
+//                     className="secondary"
+//                     disabled={finishedMatchCount === 0}
+//                     title={
+//                       finishedMatchCount
+//                         ? "Chỉ lưu trận đã kết thúc và bỏ qua các trận còn lại"
+//                         : "Chưa có trận đã kết thúc; hãy dùng Huỷ giải đấu"
+//                     }
+//                     onClick={() => {
+//                       const completed = tournament.status === "finished",
+//                         message = completed
+//                           ? `Lưu ${finishedMatchCount} trận đã kết thúc cùng log vote và dọn lịch đấu hiện tại?`
+//                           : `Kết thúc giải sớm sẽ chỉ lưu ${finishedMatchCount} trận đã kết thúc cùng log vote đã chấm. Các trận chưa đấu/không xảy ra và vote của chúng sẽ bị bỏ qua. Tiếp tục?`;
+//                       if (window.confirm(message))
+//                         action(
+//                           `/tournaments/${tournament.id}/finish-early`,
+//                           "POST",
+//                         );
+//                     }}
+//                   >
+//                     <Flag size={17} />{" "}
+//                     {tournament.status === "finished"
+//                       ? "Lưu và làm mới giải"
+//                       : "Kết thúc giải đấu sớm"}
+//                   </button>
+//                   <button
+//                     className="danger hero-danger"
+//                     onClick={() => {
+//                       if (
+//                         window.confirm(
+//                           "Huỷ giải sẽ xóa toàn bộ lịch đấu và bình chọn hiện tại mà không lưu lịch sử. Thao tác này không thể hoàn tác. Tiếp tục?",
+//                         )
+//                       )
+//                         action(`/tournaments/${tournament.id}/cancel`, "POST");
+//                     }}
+//                   >
+//                     <Trash2 size={17} /> Huỷ giải đấu
+//                   </button>
+//                 </>
+//               )}
+//           </div>
+//           <div className="ball ball1">3</div>
+//           <div className="ball ball2">C</div>
+//         </section>
+//         {error && (
+//           <div className="toast" onClick={() => setError("")}>
+//             <X size={16} />
+//             {error}
+//           </div>
+//         )}
+//         <section className="stats">
+//           <div>
+//             <Trophy />
+//             <span>
+//               <b>
+//                 {publicMatches.filter((m) => m.status === "finished").length}
+//               </b>{" "}
+//               trận đã đấu
+//             </span>
+//           </div>
+//           <div>
+//             <CalendarDays />
+//             <span>
+//               <b>
+//                 {publicMatches.filter((m) => m.status === "scheduled").length}
+//               </b>{" "}
+//               trận sắp tới
+//             </span>
+//           </div>
+//           <div>
+//             <Users />
+//             <span>
+//               <b>{activeTeams.length}</b> đội tham gia
+//             </span>
+//           </div>
+//           <div>
+//             <Vote />
+//             <span>
+//               <b>
+//                 {publicMatches.reduce((n, m) => n + m.votes_a + m.votes_b, 0)}
+//               </b>{" "}
+//               lượt dự đoán
+//             </span>
+//           </div>
+//         </section>
+//         <section id="matches" className="section matches-section">
+//           <div className="section-head matches-section-head">
+//             <div className="section-title">
+//               <span className="kicker">ĐƯỜNG ĐẾN CHỨC VÔ ĐỊCH</span>
+//               <h2>Danh sách trận đấu</h2>
+//             </div>
+//             <div className="match-list-tools">
+//               <div className="legend">
+//                 <i className="live"></i>Sắp đấu <i className="done"></i>Đã kết
+//                 thúc
+//               </div>
+//               {user.role === "user" && (
+//                 <div className="vote-policy">
+//                   <LockKeyhole size={15} /> Vote cần xác nhận · Không thể tự huỷ
+//                 </div>
+//               )}
+//               {user.role === "admin" && tournamentMatches.length > 0 && (
+//                 <div className="match-list-actions">
+//                   {hiddenMatchCount > 0 && (
+//                     <button
+//                       className="secondary dark"
+//                       onClick={() => setShowHiddenMatches((value) => !value)}
+//                     >
+//                       {showHiddenMatches ? (
+//                         <EyeOff size={17} />
+//                       ) : (
+//                         <Eye size={17} />
+//                       )}{" "}
+//                       {showHiddenMatches
+//                         ? "Ẩn trận đã ẩn"
+//                         : `Hiện ${hiddenMatchCount} trận đã ẩn`}
+//                     </button>
+//                   )}
+//                   <button
+//                     className="secondary dark"
+//                     disabled={!canReorder}
+//                     title={
+//                       canReorder
+//                         ? "Kéo thả để đổi cặp vòng đầu"
+//                         : "Không thể đổi cặp sau khi đã có vote hoặc kết quả"
+//                     }
+//                     onClick={() => setModal("pairings")}
+//                   >
+//                     <GripVertical size={17} /> Sắp xếp cặp đấu
+//                   </button>
+//                 </div>
+//               )}
+//             </div>
+//           </div>
+//           {matches.length ? (
+//             <MatchesTable
+//               matches={matches}
+//               maxRound={maxRound}
+//               isAdmin={user.role === "admin"}
+//               canVote={user.role === "user"}
+//               showHandicap={user.role !== "viewer"}
+//               onVote={vote}
+//               onEdit={(m) => setModal("match:" + m.id)}
+//               onStats={(m) => setModal("votes:" + m.id)}
+//               onLock={(m) =>
+//                 action(`/matches/${m.id}`, "PATCH", {
+//                   votingLocked: !m.voting_locked,
+//                 })
+//               }
+//               onVisibility={(m) =>
+//                 action(`/matches/${m.id}`, "PATCH", { hidden: !m.hidden })
+//               }
+//             />
+//           ) : (
+//             <div className="empty">
+//               <Trophy />
+//               <h3>
+//                 {hiddenMatchCount
+//                   ? "Các trận đấu đang được ẩn"
+//                   : "Lịch đấu chưa được xếp"}
+//               </h3>
+//               <p>
+//                 {hiddenMatchCount
+//                   ? "Admin có thể dùng nút phía trên để xem và khôi phục trận đã ẩn."
+//                   : "Admin có thể tạo lịch tự động sau khi chốt danh sách đội."}
+//               </p>
+//             </div>
+//           )}
+//         </section>
+//         <Leaderboard
+//           key={tournamentMatches.map((m) => m.winner_id || 0).join(",")}
+//           request={request}
+//           isAdmin={user.role === "admin"}
+//         />
+//         <MatchHistory history={data?.history || []} />
+//         {user.role !== "viewer" && (
+//           <VoteHistory
+//             key={auditRevision}
+//             request={request}
+//             isAdmin={user.role === "admin"}
+//           />
+//         )}
+//         <section id="teams" className="section teams">
+//           <div className="section-head">
+//             <div>
+//               <span className="kicker">NHỮNG TAY CƠ TRANH TÀI</span>
+//               <h2>Đội tham gia</h2>
+//             </div>
+//             {user.role === "admin" && (
+//               <button
+//                 className="secondary dark"
+//                 onClick={() => setModal("team")}
+//               >
+//                 <Plus size={17} /> Thêm đội
+//               </button>
+//             )}
+//           </div>
+//           <div className="team-grid">
+//             {visibleTeams?.map((t, i) => (
+//               <div
+//                 className={"team-card " + (!t.active ? "inactive" : "")}
+//                 key={t.id}
+//               >
+//                 <span className="rank">{String(i + 1).padStart(2, "0")}</span>
+//                 <span
+//                   className="team-dot"
+//                   style={{ background: t.color }}
+//                 ></span>
+//                 <div className="team-info">
+//                   <b>{t.name}</b>
+//                   <small>
+//                     {t.active ? "Đội trưởng" : "Tạm ngừng"} · {t.captain}
+//                   </small>
+//                 </div>
+//                 {user.role === "admin" && (
+//                   <>
+//                     <button
+//                       className={"toggle-team " + (t.active ? "on" : "")}
+//                       title={t.active ? "Tạm tắt đội" : "Kích hoạt đội"}
+//                       onClick={() =>
+//                         action(`/teams/${t.id}`, "PATCH", { active: !t.active })
+//                       }
+//                     >
+//                       <Power size={15} />
+//                     </button>
+//                     <button
+//                       className="delete-team"
+//                       title={`Xóa đội ${t.name}`}
+//                       aria-label={`Xóa đội ${t.name}`}
+//                       onClick={() => {
+//                         if (
+//                           window.confirm(
+//                             `Bạn chắc chắn muốn xóa đội “${t.name}”?`,
+//                           )
+//                         )
+//                           action(`/teams/${t.id}`, "DELETE");
+//                       }}
+//                     >
+//                       <Trash2 size={15} />
+//                     </button>
+//                   </>
+//                 )}
+//               </div>
+//             ))}
+//           </div>
+//         </section>
+//         {user.role === "admin" && (
+//           <section id="admin" className="section admin">
+//             <ShieldCheck />
+//             <div>
+//               <span className="kicker">KHU VỰC BẢO MẬT</span>
+//               <h2>Quản trị giải đấu</h2>
+//               <p>
+//                 Tài khoản, đội thi đấu, điểm chấp và kết quả được kiểm soát tại
+//                 đây.
+//               </p>
+//             </div>
+//             <div className="admin-buttons">
+//               <button className="secondary" onClick={() => setModal("users")}>
+//                 <Users size={17} /> Quản lý tài khoản
+//               </button>
+//               <button className="primary" onClick={() => setModal("user")}>
+//                 <Plus size={17} /> Tạo tài khoản
+//               </button>
+//             </div>
+//           </section>
+//         )}
+//       </main>
+//       <footer>
+//         <div className="brand">
+//           <span className="brand-mark small">3C</span>
+//           <b>CUE ARENA</b>
+//         </div>
+//         <span>Fair play. Great shots. One champion.</span>
+//       </footer>
+//       {modal === "team" && (
+//         <FormModal
+//           title="Thêm đội thi đấu"
+//           fields={[
+//             ["name", "Tên đội"],
+//             ["captain", "Đội trưởng"],
+//             ["color", "Màu đại diện", "color"],
+//           ]}
+//           onClose={() => setModal(null)}
+//           onSubmit={(v) => action("/teams", "POST", v)}
+//         />
+//       )}
+//       {modal === "user" && (
+//         <FormModal
+//           title="Tạo tài khoản"
+//           fields={[
+//             ["username", "Tên đăng nhập"],
+//             ["displayName", "Tên hiển thị"],
+//             ["password", "Mật khẩu (tối thiểu 8 ký tự)", "password"],
+//           ]}
+//           onClose={() => setModal(null)}
+//           onSubmit={(v) => action("/users", "POST", { ...v, role: "user" })}
+//         />
+//       )}
+//       {modal === "profile" && (
+//         <ProfileModal
+//           user={user}
+//           request={request}
+//           onClose={() => setModal(null)}
+//           onSaved={(u) => {
+//             setUser(u);
+//             setModal(null);
+//           }}
+//         />
+//       )}
+//       {modal === "users" && (
+//         <UsersModal
+//           request={request}
+//           currentUserId={user.id}
+//           onClose={() => setModal(null)}
+//         />
+//       )}
+//       {modal === "pairings" && tournament && (
+//         <PairingModal
+//           matches={tournamentMatches}
+//           onClose={() => setModal(null)}
+//           onSubmit={(teamIds) =>
+//             action(`/tournaments/${tournament.id}/pairings`, "PATCH", {
+//               teamIds,
+//             })
+//           }
+//         />
+//       )}
+//       {modal?.startsWith("match:") && (
+//         <MatchModal
+//           match={
+//             tournamentMatches.find((m) => m.id === Number(modal.split(":")[1]))!
+//           }
+//           onClose={() => setModal(null)}
+//           onSubmit={(v) =>
+//             action(`/matches/${modal.split(":")[1]}`, "PATCH", v)
+//           }
+//         />
+//       )}
+//       {modal?.startsWith("votes:") && (
+//         <VoteStatsModal
+//           matchId={Number(modal.split(":")[1])}
+//           request={request}
+//           onChanged={load}
+//           onClose={() => setModal(null)}
+//         />
+//       )}
+//     </div>
+//   );
+// }
+
+// function Login({
+//   onLogin,
+//   onView
+// }: {
+//   onLogin: (u: User, c: string) => void;
+//   onView: () => void;
+// }) {
+//   const [err, setErr] = useState('');
+//   const [loading, setLoading] = useState(false);
+
+//   // Đọc thông tin đăng nhập nhanh từ URL
+//   const params = new URLSearchParams(window.location.search);
+//   const quickUsername = params.get('username') || '';
+//   const quickPassword = params.get('password') || '';
+
+//   // Hàm đăng nhập dùng chung
+//   const login = async (username: string, password: string) => {
+//     setLoading(true);
+//     setErr('');
+
+//     try {
+//       const r = await fetch('/bff/auth/login', {
+//         method: 'POST',
+//         headers: {
+//           'content-type': 'application/json'
+//         },
+//         body: JSON.stringify({
+//           username,
+//           password
+//         })
+//       });
+
+//       const d = await r.json();
+
+//       if (!r.ok) {
+//         throw new Error(d.message);
+//       }
+
+//       // Xóa username/password khỏi URL sau khi đăng nhập thành công
+//       window.history.replaceState(
+//         {},
+//         '',
+//         window.location.pathname
+//       );
+
+//       onLogin(d.user, d.csrf);
+//     } catch (x) {
+//       setErr((x as Error).message);
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   // Nút đăng nhập bình thường
+//   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+//     e.preventDefault();
+
+//     const f = new FormData(e.currentTarget);
+
+//     await login(
+//       String(f.get('username') || ''),
+//       String(f.get('password') || '')
+//     );
+//   };
+
+//   // Đăng nhập tự động nếu URL có username + password
+//   useEffect(() => {
+//     if (!quickUsername || !quickPassword) return;
+
+//     void login(quickUsername, quickPassword);
+//   }, []);
+
+//   return (
+//     <div className="login">
+//       <div className="login-art">
+//         <div className="brand light">
+//           <span className="brand-mark small">3C</span>
+
+//           <div>
+//             <b>CUE ARENA</b>
+//             <small>TOURNAMENT SERIES</small>
+//           </div>
+//         </div>
+
+//         <div className="login-copy">
+//           <span className="kicker lime">
+//             THE GAME STARTS HERE
+//           </span>
+
+//           <h1>
+//             Chạm cơ.<br />
+//             <em>Chạm đỉnh.</em>
+//           </h1>
+
+//           <p>
+//             Theo dõi mọi đường cơ, dự đoán nhà vô địch và
+//             sống trọn từng khoảnh khắc.
+//           </p>
+//         </div>
+
+//         <div className="table-lines"></div>
+//         <div className="big-ball">3</div>
+//       </div>
+
+//       <div className="login-form">
+//         <form onSubmit={submit}>
+//           <div className="mobile-brand">
+//             <span className="brand-mark">3C</span>
+//           </div>
+
+//           <span className="kicker">
+//             CHÀO MỪNG TRỞ LẠI
+//           </span>
+
+//           <h2>Đăng nhập</h2>
+
+//           <p>
+//             Sử dụng tài khoản do quản trị viên cấp.
+//           </p>
+
+//           <label>
+//             Tên đăng nhập
+
+//             <input
+//               name="username"
+//               autoComplete="username"
+//               placeholder="Nhập tên đăng nhập"
+//               defaultValue={quickUsername}
+//               required
+//             />
+//           </label>
+
+//           <PasswordField
+//             name="password"
+//             label="Mật khẩu"
+//             autoComplete="current-password"
+//             placeholder="••••••••"
+//             defaultValue={quickPassword}
+//             required
+//           />
+
+//           {err && (
+//             <div className="form-error">
+//               {err}
+//             </div>
+//           )}
+
+//           <button
+//             className="primary wide"
+//             disabled={loading}
+//           >
+//             {loading
+//               ? 'Đang xác thực...'
+//               : 'Vào giải đấu'}{' '}
+//             <span>→</span>
+//           </button>
+
+//           <button
+//             type="button"
+//             className="secondary wide"
+//             onClick={onView}
+//           >
+//             Tiếp tục với chế độ chỉ xem
+//           </button>
+
+//           <div className="secure">
+//             <ShieldCheck size={16} />
+//             Phiên đăng nhập được bảo vệ an toàn
+//           </div>
+//         </form>
+//       </div>
+//     </div>
+//   );
+// }
+
+// function MatchesTable({matches,maxRound,isAdmin,canVote,showHandicap,onVote,onEdit,onStats,onLock,onVisibility}:{matches:Match[];maxRound:number;isAdmin:boolean;canVote:boolean;showHandicap:boolean;onVote:(m:Match,id:number)=>void;onEdit:(m:Match)=>void;onStats:(m:Match)=>void;onLock:(m:Match)=>void;onVisibility:(m:Match)=>void}){
+//  return <div className="current-match-table">
+//   <div className="current-match-row current-match-header"><span>Vòng đấu</span><span>Đội A</span><span>Tỷ số</span><span>Đội B</span><span>Trạng thái</span></div>
+//   {[...matches].sort((a,b)=>a.round_no-b.round_no||a.position-b.position).map(m=>{
+//    const isBye=m.status==='bye',locked=!!m.voting_locked,total=m.votes_a+m.votes_b,hasVote=m.my_vote!=null;
+//    const team=(side:'a'|'b')=>{
+//     const id=side==='a'?m.team_a_id:m.team_b_id,name=side==='a'?m.team_a_name:m.team_b_name,color=side==='a'?m.team_a_color:m.team_b_color,handicap=side==='a'?m.handicap_a:m.handicap_b,picked=!!id&&m.my_vote===id,canPick=canVote&&!picked&&!isBye&&!locked&&m.status==='scheduled'&&!!id;
+//     const content=<><i className="team-dot" style={{background:color||'#89958f'}}></i><span className="current-team-copy"><small className="responsive-label">{side==='a'?'Đội A':'Đội B'}</small><b>{name||(isBye?'BYE':'Chờ xác định')}</b>{showHandicap&&handicap!=null&&handicap>0&&<small>Chấp +{handicap}</small>}{picked&&<small className="my-pick"><Check size={12}/> Bạn đã chọn · Không thể huỷ</small>}</span></>;
+//     const className=`current-team current-team-${side} ${canPick?'vote-team ':''}${picked?'voted ':''}${m.winner_id===id&&id?'winner':''}`;
+//     return canPick?<button className={className} onClick={()=>onVote(m,id!)}>{content}</button>:<div className={className}>{content}</div>;
+//    };
+//    return <article className={`current-match-row ${m.hidden?'hidden-match':''}`} key={m.id}>
+//     <span className="history-round current-match-meta">{roundName(m.round_no,maxRound)}<small>Trận {m.position}</small></span>
+//     {team('a')}
+//     <strong className="history-score current-match-score">{m.score_a??'–'} <i>:</i> {m.score_b??'–'}</strong>
+//     {team('b')}
+//     <span className="current-status"><b>{m.hidden?'Đã ẩn':isBye?'Vào thẳng':m.status==='finished'?'Kết thúc':hasVote?'Đã vote · Không thể huỷ':locked?'Đã khóa vote':canVote?'Chọn đội dự đoán':'Sắp đấu'}</b>{isAdmin&&<span className="current-actions"><button onClick={()=>onVisibility(m)} title={m.hidden?'Hiện trận đấu':'Ẩn trận đấu'} aria-label={m.hidden?'Hiện trận đấu':'Ẩn trận đấu'}>{m.hidden?<Eye size={14}/>:<EyeOff size={14}/>}</button>{!isBye&&<>{m.status==='scheduled'&&<button onClick={()=>onLock(m)} title={locked?'Mở vote':'Khóa vote'}>{locked?<LockKeyholeOpen size={14}/>:<LockKeyhole size={14}/>}</button>}<button onClick={()=>onStats(m)} title={`Xem ${total} vote`}><BarChart3 size={14}/></button><button onClick={()=>onEdit(m)} title="Cập nhật trận"><Settings2 size={14}/></button></>}</span>}</span>
+//    </article>;
+//   })}
+//  </div>;
+// }
+
+// type PairingSlot={teamId:number;name:string;color:string};
+// function PairingModal({matches,onClose,onSubmit}:{matches:Match[];onClose:()=>void;onSubmit:(teamIds:number[])=>void}){const first=[...matches].filter(m=>m.round_no===1).sort((a,b)=>a.position-b.position),initial:(PairingSlot|null)[]=first.flatMap(m=>[m.team_a_id?{teamId:m.team_a_id,name:m.team_a_name||'',color:m.team_a_color}:null,m.team_b_id?{teamId:m.team_b_id,name:m.team_b_name||'',color:m.team_b_color}:null]),[slots,setSlots]=useState(initial),[dragging,setDragging]=useState<number|null>(null),[selected,setSelected]=useState<number|null>(null);const swap=(source:number|null,target:number)=>{if(source==null||source===target||!slots[target])return;setSlots(current=>{const next=[...current];[next[source],next[target]]=[next[target],next[source]];return next});setDragging(null);setSelected(null)};const choose=(index:number)=>selected==null?setSelected(index):swap(selected,index);return <div className="overlay"><div className="modal pairing-modal"><button className="close" onClick={onClose}><X/></button><span className="kicker">SẮP XẾP VÒNG ĐẦU</span><h2>Kéo thả để đổi cặp đấu</h2><p className="hint">Kéo một đội vào vị trí đội khác để hoán đổi. Trên điện thoại, chạm lần lượt hai đội. Không thể lưu sau khi giải đã có bình chọn hoặc kết quả.</p><div className="pairing-list">{first.map((m,index)=><div className="pairing-match" key={m.id}><strong>Trận {m.position}</strong>{[index*2,index*2+1].map(slotIndex=>{const slot=slots[slotIndex];return slot?<div className={'pairing-team '+(dragging===slotIndex?'dragging ':'')+(selected===slotIndex?'selected':'')} key={slotIndex} draggable onClick={()=>choose(slotIndex)} onDragStart={()=>setDragging(slotIndex)} onDragEnd={()=>setDragging(null)} onDragOver={e=>e.preventDefault()} onDrop={()=>swap(dragging,slotIndex)}><GripVertical size={17}/><i className="team-dot" style={{background:slot.color}}></i><b>{slot.name}</b></div>:<div className="pairing-team bye" key={slotIndex}>BYE · Vào thẳng vòng sau</div>})}</div>)}</div><div className="pairing-actions"><button className="secondary dark" onClick={onClose}>Hủy</button><button className="primary" onClick={()=>onSubmit(slots.filter((slot):slot is PairingSlot=>slot!==null).map(slot=>slot.teamId))}>Lưu cặp đấu</button></div></div></div>}
+
+// type Leader={id:number;username:string;display_name:string;active:number;points:number};
+// function MatchHistory({history}:{history:HistoryMatch[]}){
+//  return <section id="history" className="section history-section">
+//   <div className="section-head"><div><span className="kicker">10 TRẬN GẦN NHẤT</span><h2>Lịch sử trận đấu</h2></div><HistoryIcon size={30}/></div>
+//   {history.length===0?<div className="empty"><HistoryIcon/><h3>Chưa có lịch sử</h3><p>Các trận đã kết thúc sẽ được lưu tại đây khi admin kết thúc giải đấu.</p></div>:<div className="history-table">
+//    <div className="history-row history-header"><span>Giải đấu</span><span>Vòng đấu</span><span>Đội A</span><span>Tỷ số</span><span>Đội B</span><span>Kết quả</span></div>
+//    {history.map(m=><article className="history-row" key={`${m.history_id}-${m.id}`}>
+//     <span className="history-tournament"><b>{m.tournament_name}</b><small>{new Date(m.archived_at).toLocaleString('vi-VN')}</small></span>
+//     <span className="history-round">{roundName(m.round_no,m.max_round)} · Trận {m.position}</span>
+//     <span className={`history-team history-team-a ${m.winner_name===m.team_a_name?'history-winner':''}`}><small className="responsive-label">Đội A</small><b>{m.team_a_name||'Chưa xác định'}</b><small>{m.team_a_captain||''}</small></span>
+//     <strong className="history-score">{m.score_a??'–'} <i>:</i> {m.score_b??'–'}</strong>
+//     <span className={`history-team history-team-b ${m.winner_name===m.team_b_name?'history-winner':''}`}><small className="responsive-label">Đội B</small><b>{m.team_b_name||'BYE'}</b><small>{m.team_b_captain||''}</small></span>
+//     <span className="history-result">{m.winner_name?<>Thắng: <b>{m.winner_name}</b></>:'Chưa có kết quả'}</span>
+//    </article>)}
+//   </div>}
+//  </section>;
+// }
+// function VoteHistory({request,isAdmin}:{request:(path:string,init?:RequestInit)=>Promise<any>;isAdmin:boolean}){
+//  const[data,setData]=useState<VoteHistoryData|null>(null),[page,setPage]=useState(1),[userFilter,setUserFilter]=useState(''),[loading,setLoading]=useState(false),[error,setError]=useState('');
+//  useEffect(()=>{let active=true;setLoading(true);setError('');const query=`?page=${page}${isAdmin&&userFilter?`&userId=${encodeURIComponent(userFilter)}`:''}`;request(`/vote-history${query}`).then(result=>{if(active){setData(result);if(result.page!==page)setPage(result.page)}}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[page,userFilter,isAdmin]);
+//  return <section id="vote-history" className="section vote-history-section">
+//   <div className="section-head"><div><span className="kicker">{isAdmin?'TOÀN BỘ LƯỢT VOTE ĐÃ LƯU':'CHỈ CÁC LƯỢT VOTE CỦA BẠN'}</span><h2>Lịch sử vote</h2></div><HistoryIcon size={30}/></div>
+//   <div className="vote-history-toolbar"><span className="vote-history-total"><i><Vote size={18}/></i><span><b>{data?.total||0}</b><small>Lượt vote đã lưu{loading?' · Đang cập nhật...':''}</small></span></span>{isAdmin&&<label><span>Lọc người chơi</span><select value={userFilter} onChange={e=>{setUserFilter(e.target.value);setPage(1)}}><option value="">Tất cả người chơi</option>{(data?.users||[]).map(user=><option value={user.id} key={user.id}>{user.display_name} (@{user.username}){user.active?'':' · đã khóa'}</option>)}</select></label>}</div>
+//   {error&&<div className="form-error">{error}</div>}
+//   {!data?<div className="vote-loading">Đang tải lịch sử vote...</div>:data.items.length===0?<div className="empty"><Vote/><h3>Chưa có lịch sử vote</h3><p>{isAdmin?'Không có lượt vote phù hợp với bộ lọc.':'Bạn chưa có vote nào trong các giải đấu đã kết thúc.'}</p></div>:<div className="vote-history-table"><div className="vote-history-row vote-history-head"><span>Ngày vote</span><span>Trận đấu</span><span>Người chơi</span><span>Lựa chọn</span><span>Kết quả</span></div>{data.items.map(entry=>{const votedAt=new Date(entry.voted_at),handicapA=Number(entry.handicap_a),handicapB=Number(entry.handicap_b),resultClass=entry.awarded===1?'correct':entry.awarded===-1?'wrong':'pending';return <article className={`vote-history-row result-${resultClass} ${entry.removed_at?'removed':''}`} key={entry.id}><time className="vote-history-cell date" dateTime={entry.voted_at}><strong>{String(votedAt.getDate()).padStart(2,'0')}</strong><span><b>THG {String(votedAt.getMonth()+1).padStart(2,'0')}</b><small>{votedAt.getFullYear()} · {votedAt.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</small></span></time><span className="vote-history-cell match"><span className="vote-history-matchup"><span className="competitor team-a"><b>{entry.team_a_name}</b>{handicapA>0&&<small>Chấp +{handicapA}</small>}</span><strong className="scoreboard"><b>{entry.score_a??'–'}</b><i>–</i><b>{entry.score_b??'–'}</b></strong><span className="competitor team-b"><b>{entry.team_b_name}</b>{handicapB>0&&<small>Chấp +{handicapB}</small>}</span></span></span><span className="vote-history-cell user"><i>{entry.display_name.charAt(0).toUpperCase()}</i><span><b>{entry.display_name}</b><small>@{entry.username}{entry.source_user_id==null?' · tài khoản đã xoá':''}</small></span></span><span className="vote-history-cell pick"><small className="choice-label">Đã chọn</small><b>{entry.voted_team_name}</b>{entry.removed_at&&<small className="removed-note"><Trash2 size={12}/> Admin đã xoá vote</small>}</span><span className={`vote-history-result ${resultClass}`}>{entry.awarded===1?<Check size={17}/>:entry.awarded===-1?<X size={17}/>:<Clock3 size={17}/>}<span><b>{entry.awarded===1?'+1':entry.awarded===-1?'−1':'0'}</b><small>{entry.awarded===1?'Đúng':entry.awarded===-1?'Sai':'Chờ'}</small></span></span></article>})}</div>}
+//   {data&&data.total>0&&<div className="leader-pagination vote-history-pagination"><small>{data.total} lượt vote · Trang {data.page}/{data.pages}</small><div><button aria-label="Trang trước" disabled={page<=1||loading} onClick={()=>setPage(value=>value-1)}><ChevronLeft size={16}/></button><button aria-label="Trang sau" disabled={page>=data.pages||loading} onClick={()=>setPage(value=>value+1)}><ChevronRight size={16}/></button></div></div>}
+//  </section>;
+// }
+// function Leaderboard({request,isAdmin}:{request:(path:string,init?:RequestInit)=>Promise<any>;isAdmin:boolean}){const[page,setPage]=useState(1),[revision,setRevision]=useState(0),[data,setData]=useState<{items:Leader[];page:number;pages:number;total:number}|null>(null),[error,setError]=useState('');useEffect(()=>{setError('');request(`/leaderboard?page=${page}`).then(setData).catch(e=>setError(e.message))},[page,revision]);const reset=async()=>{if(!window.confirm('Reset toàn bộ điểm dự đoán tích lũy tuần này? Thao tác không thể hoàn tác.'))return;setError('');try{await request('/leaderboard/reset',{method:'POST',body:'{}'});setPage(1);setRevision(v=>v+1)}catch(e){setError((e as Error).message)}};return <section className="section leaderboard-section"><div className="section-head"><div><span className="kicker">DỰ ĐOÁN CHÍNH XÁC</span><h2>Bảng xếp hạng bình chọn</h2></div><div className="leader-tools"><div className="score-rule"><Check size={14}/> Đúng +1 <X size={14}/> Sai −1</div>{isAdmin&&<button className="reset-score" onClick={reset}><RotateCcw size={15}/> Reset điểm tuần</button>}</div></div>{error&&<div className="form-error">{error}</div>}<div className="leaderboard-card"><div className="leader-row leader-header"><span>Hạng</span><span>Người chơi</span><span>Tổng điểm</span></div>{!data?<div className="vote-loading">Đang tải bảng xếp hạng...</div>:data.items.map((u,i)=>{const rank=(page-1)*10+i+1;return <div className="leader-row" key={u.id}><span className={'leader-rank rank-'+rank}>{rank<=3?<Medal size={18}/>:rank}</span><span className="leader-user"><i>{u.display_name.charAt(0).toUpperCase()}</i><span><b>{u.display_name}</b><small>@{u.username}{!u.active?' · đã khóa':''}</small></span></span><strong className={u.points>=0?'positive':'negative'}>{u.points>0?'+':''}{u.points}</strong></div>})}{data&&<div className="leader-pagination"><small>{data.total} người chơi · Trang {data.page}/{data.pages}</small><div><button aria-label="Trang trước" disabled={page<=1} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={16}/></button><button aria-label="Trang sau" disabled={page>=data.pages} onClick={()=>setPage(p=>p+1)}><ChevronRight size={16}/></button></div></div>}</div></section>}
+
+// type VoteDetail={user_id:number;team_id:number;awarded:number|null;created_at:string;username:string;display_name:string;team_name:string};
+// function VoteStatsModal({matchId,request,onChanged,onClose}:{matchId:number;request:(path:string,init?:RequestInit)=>Promise<any>;onChanged:()=>Promise<void>;onClose:()=>void}){
+//  const[data,setData]=useState<{match:any;votes:VoteDetail[]}|null>(null),[error,setError]=useState(''),[removing,setRemoving]=useState<number|null>(null);
+//  const load=async()=>{setError('');try{setData(await request(`/matches/${matchId}/votes`))}catch(e){setError((e as Error).message)}};
+//  useEffect(()=>{void load()},[matchId]);
+//  const removeVote=async(v:VoteDetail)=>{const scoredNote=v.awarded!=null?' Điểm đã chấm của user sẽ được hoàn tác.':'';if(!window.confirm(`Xoá vote của “${v.display_name}” cho đội “${v.team_name}”?${scoredNote}`))return;setRemoving(v.user_id);setError('');try{await request(`/matches/${matchId}/votes/${v.user_id}`,{method:'DELETE'});await load();await onChanged()}catch(e){setError((e as Error).message)}finally{setRemoving(null)}};
+//  const votes=data?.votes||[],a=data?.match,forA=votes.filter(v=>v.team_id===a?.team_a_id),forB=votes.filter(v=>v.team_id===a?.team_b_id),total=votes.length;
+//  return <div className="overlay"><div className="modal vote-modal"><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">CHỈ DÀNH CHO ADMIN</span><h2>Thống kê bình chọn</h2>{error&&<div className="form-error">{error}</div>}{!data?<div className="vote-loading">Đang tải dữ liệu...</div>:<><div className="vote-summary"><VoteBar name={a.team_a_name||'Đội A'} count={forA.length} total={total}/><VoteBar name={a.team_b_name||'Đội B'} count={forB.length} total={total}/></div><div className="voter-head"><b>{total} người đã bình chọn</b><small>Admin có thể xoá vote khi user chọn nhầm</small></div>{total===0?<div className="no-votes"><Vote/><span>Chưa có lượt bình chọn nào</span></div>:<div className="voter-list">{votes.map(v=><div className="voter" key={v.user_id}><span className="voter-avatar">{v.display_name.charAt(0).toUpperCase()}</span><div><b>{v.display_name}</b><small>@{v.username} · {new Date(v.created_at+'Z').toLocaleString('vi-VN')}</small></div><span className={v.team_id===a.team_a_id?'choice choice-a':'choice choice-b'}>{v.team_name}{v.awarded!=null?` · ${v.awarded>0?'+1':'−1'}`:''}</span><button type="button" className="delete-vote" disabled={removing===v.user_id} onClick={()=>void removeVote(v)} title={`Xoá vote của ${v.display_name}`} aria-label={`Xoá vote của ${v.display_name}`}><Trash2 size={15}/></button></div>)}</div>}</>}</div></div>;
+// }
+// function VoteBar({name,count,total}:{name:string;count:number;total:number}){const percent=total?Math.round(count/total*100):0;return <div className="vote-bar"><div><b>{name}</b><span>{count} vote · {percent}%</span></div><div className="bar-track"><i style={{width:percent+'%'}}></i></div></div>}
+
+// function ProfileModal({user,request,onClose,onSaved}:{user:User;request:(path:string,init?:RequestInit)=>Promise<any>;onClose:()=>void;onSaved:(u:User)=>void}){const[error,setError]=useState(''),[saving,setSaving]=useState(false);return <div className="overlay"><form className="modal" onSubmit={async e=>{e.preventDefault();setError('');const v=Object.fromEntries(new FormData(e.currentTarget));if(v.newPassword!==v.confirmNewPassword){setError('Mật khẩu nhập lại không khớp');return}setSaving(true);try{const updated=await request('/profile',{method:'PATCH',body:JSON.stringify(v)});onSaved(updated)}catch(x){setError((x as Error).message)}finally{setSaving(false)}}}><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">TÀI KHOẢN CỦA TÔI</span><h2>Chỉnh sửa hồ sơ</h2><label>Tên đăng nhập<input value={user.username} disabled/></label><label>Tên hiển thị<input name="displayName" defaultValue={user.displayName} maxLength={80} required/></label><div className="password-divider"><span>Đổi mật khẩu</span><small>Để trống nếu không muốn đổi</small></div><PasswordField name="currentPassword" label="Mật khẩu hiện tại" autoComplete="current-password"/><PasswordField name="newPassword" label="Mật khẩu mới (tối thiểu 8 ký tự)" autoComplete="new-password" minLength={8}/><PasswordField name="confirmNewPassword" label="Nhập lại mật khẩu mới" autoComplete="new-password" minLength={8}/>{error&&<div className="form-error">{error}</div>}<button className="primary wide" disabled={saving}>{saving?'Đang lưu...':'Lưu thay đổi'}</button></form></div>}
+
+// function UsersModal({request,currentUserId,onClose}:{request:(path:string,init?:RequestInit)=>Promise<any>;currentUserId:number;onClose:()=>void}){const[users,setUsers]=useState<User[]>([]),[selectedId,setSelectedId]=useState<number|null>(null),[error,setError]=useState(''),[saved,setSaved]=useState(''),[saving,setSaving]=useState(false);const load=()=>request('/users').then((items:User[])=>{setUsers(items);setSelectedId(id=>id??items[0]?.id??null)}).catch(e=>setError(e.message));useEffect(()=>{load()},[]);const selected=users.find(u=>u.id===selectedId);return <div className="overlay"><div className="modal users-modal"><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">CHỈ DÀNH CHO ADMIN</span><h2>Quản lý tài khoản</h2><div className="user-manager"><div className="user-list">{users.map(u=><button key={u.id} className={u.id===selectedId?'selected':''} onClick={()=>{setSelectedId(u.id);setError('');setSaved('')}}><span className="voter-avatar">{u.displayName.charAt(0).toUpperCase()}</span><span><b>{u.displayName}</b><small>@{u.username} · {u.role}{!u.active?' · đã khóa':''}</small></span></button>)}</div>{selected&&<form key={selected.id} className="user-editor" onSubmit={async e=>{e.preventDefault();setSaving(true);setError('');setSaved('');const f=new FormData(e.currentTarget),body:any={displayName:f.get('displayName'),role:f.get('role'),active:f.get('active')==='on'};if(f.get('password'))body.password=f.get('password');try{await request(`/users/${selected.id}`,{method:'PATCH',body:JSON.stringify(body)});setSaved('Đã lưu tài khoản');await load()}catch(x){setError((x as Error).message)}finally{setSaving(false)}}}><label>Tên đăng nhập<input value={selected.username} disabled/></label><label>Tên hiển thị<input name="displayName" defaultValue={selected.displayName} required maxLength={80}/></label><label>Phân quyền<select name="role" defaultValue={selected.role}><option value="user">User</option><option value="admin">Admin</option></select></label><PasswordField name="password" label="Đặt mật khẩu mới" autoComplete="new-password" minLength={8}/><label className="check-label"><input name="active" type="checkbox" defaultChecked={selected.active} disabled={selected.id===currentUserId}/> Tài khoản đang hoạt động</label><p className="hint">Mật khẩu cũ không thể xem lại. Để trống nếu không muốn đặt lại.</p>{error&&<div className="form-error">{error}</div>}{saved&&<div className="form-success"><Check size={14}/>{saved}</div>}<div className="user-editor-actions"><button className="primary" disabled={saving}>{saving?'Đang lưu...':'Lưu tài khoản'}</button>{selected.id!==currentUserId&&<button type="button" className="danger" onClick={async()=>{if(!window.confirm(`Xóa tài khoản “${selected.displayName}”? Toàn bộ vote và điểm của tài khoản này cũng sẽ bị xóa.`))return;setSaving(true);setError('');try{await request(`/users/${selected.id}`,{method:'DELETE'});setSelectedId(null);await load()}catch(x){setError((x as Error).message)}finally{setSaving(false)}}}><Trash2 size={16}/> Xóa tài khoản</button>}</div></form>}</div></div></div>}
+
+// function PasswordField({
+//   name,
+//   label,
+//   required,
+//   minLength,
+//   autoComplete,
+//   placeholder,
+//   defaultValue
+// }: {
+//   name: string;
+//   label: string;
+//   required?: boolean;
+//   minLength?: number;
+//   autoComplete?: string;
+//   placeholder?: string;
+//   defaultValue?: string;
+// }) {
+//   const [visible, setVisible] = useState(false);
+//   return (
+//     <label>
+//       {label}
+//       <span className="password-input">
+//         <input
+//           name={name}
+//           type={visible ? "text" : "password"}
+//           required={required}
+//           minLength={minLength}
+//           autoComplete={autoComplete}
+//           placeholder={placeholder}
+//           defaultValue={defaultValue}
+//         />
+//         <button
+//           type="button"
+//           onClick={() => setVisible((v) => !v)}
+//           title={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+//           aria-label={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+//           aria-pressed={visible}
+//         >
+//           {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+//         </button>
+//       </span>
+//     </label>
+//   );
+// }
+
+// function FormModal({title,fields,onClose,onSubmit}:{title:string;fields:string[][];onClose:()=>void;onSubmit:(v:any)=>void}){return <div className="overlay"><form className="modal" onSubmit={e=>{e.preventDefault();onSubmit(Object.fromEntries(new FormData(e.currentTarget)))} }><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">QUẢN TRỊ</span><h2>{title}</h2>{fields.map(f=>f[2]==='password'?<PasswordField key={f[0]} name={f[0]} label={f[1]} required minLength={8} autoComplete="new-password"/>:<label key={f[0]}>{f[1]}<input name={f[0]} type={f[2]||'text'} defaultValue={f[2]==='color'?'#c9ff47':''} required/></label>)}<button className="primary wide">Lưu thông tin</button></form></div>}
+// function MatchModal({match:m,onClose,onSubmit}:{match:Match;onClose:()=>void;onSubmit:(v:any)=>void}){return <div className="overlay"><form className="modal" onSubmit={e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.currentTarget));onSubmit({handicapA:Number(v.handicapA),handicapB:Number(v.handicapB),...(v.scoreA!==''&&v.scoreB!==''?{scoreA:Number(v.scoreA),scoreB:Number(v.scoreB)}:{})})}}><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">ĐIỀU HÀNH TRẬN ĐẤU</span><h2>{m.team_a_name||'TBD'} <em>vs</em> {m.team_b_name||'TBD'}</h2><div className="two"><label>Chấp điểm {m.team_a_name}<input name="handicapA" type="number" min="0" step="0.5" defaultValue={m.handicap_a??0}/></label><label>Chấp điểm {m.team_b_name}<input name="handicapB" type="number" min="0" step="0.5" defaultValue={m.handicap_b??0}/></label></div><div className="two"><label>Điểm thực tế đội A<input name="scoreA" type="number" min="0" defaultValue={m.score_a??''}/></label><label>Điểm thực tế đội B<input name="scoreB" type="number" min="0" defaultValue={m.score_b??''}/></label></div><p className="hint">Đội thắng được tính theo điểm thực tế + điểm chấp và tự động vào vòng kế tiếp.</p><button className="primary wide">Cập nhật trận đấu</button></form></div>}
+// createRoot(document.getElementById('root')!).render(<App/>);
+
+
 import React,{useEffect,useState} from 'react';
 import{createRoot}from'react-dom/client';
 import{LogOut,ShieldCheck,Trophy,Users,CalendarDays,Sparkles,Settings2,Vote,Plus,X,Check,Clock3,Trash2,RotateCcw,Power,BarChart3,LockKeyhole,LockKeyholeOpen,Medal,ChevronLeft,ChevronRight,Eye,EyeOff,UserCog,GripVertical,Flag,History as HistoryIcon}from'lucide-react';
@@ -15,13 +892,13 @@ type Data={tournaments:Tournament[];teams:Team[];matches:Match[];history:History
 const roundName=(r:number,max:number)=>r===max?'CHUNG KẾT':r===max-1?'BÁN KẾT':r===max-2?'TỨ KẾT':`VÒNG ${r}`;
 
 const viewer:User={id:0,username:'viewer',displayName:'Khách',role:'viewer'};
-function App(){const[user,setUser]=useState<User>(viewer),[csrf,setCsrf]=useState(''),[data,setData]=useState<Data|null>(null),[error,setError]=useState(''),[modal,setModal]=useState<string|null>(null),[busy,setBusy]=useState(true),[showHiddenMatches,setShowHiddenMatches]=useState(false),[auditRevision,setAuditRevision]=useState(0);
+function App(){const[user,setUser]=useState<User>(viewer),[csrf,setCsrf]=useState(''),[data,setData]=useState<Data|null>(null),[error,setError]=useState(''),[modal,setModal]=useState<string|null>(()=>{const p=new URLSearchParams(window.location.search);return p.get('username')&&p.get('password')?'login':null}),[busy,setBusy]=useState(true),[showHiddenMatches,setShowHiddenMatches]=useState(false),[auditRevision,setAuditRevision]=useState(0);
  const request=async(path:string,init:RequestInit={})=>{const r=await fetch('/bff'+path,{...init,headers:{'content-type':'application/json','x-csrf-token':csrf,...init.headers}});const d=await r.json();if(!r.ok)throw new Error(d.message||'Có lỗi xảy ra');return d};
  const load=async()=>{try{setData(await request('/dashboard'))}catch(e){setError((e as Error).message)}};
  useEffect(()=>{fetch('/bff/auth/me').then(async r=>{if(r.ok){const s=await r.json();setUser(s.user);setCsrf(s.csrf)}}).finally(()=>setBusy(false))},[]);
  useEffect(()=>{load()},[user]);
  if(busy)return <div className="splash"><div className="brand-mark">3C</div></div>;
- if(modal==='login')return <Login onLogin={(u,c)=>{setUser(u);setCsrf(c);setModal(null)}} onView={()=>setModal(null)}/>;
+ if(modal==='login')return <Login onLogin={(u,c)=>{setUser(u);setCsrf(c);setModal(null)}} onView={()=>{window.history.replaceState({},'', '/');setModal(null)}}/>;
  const action=async(path:string,method:string,body?:unknown)=>{if(user.role==='viewer'){setError('Vui lòng đăng nhập để thực hiện thao tác này');return}setError('');try{await request(path,{method,body:body?JSON.stringify(body):undefined});setModal(null);await load();setAuditRevision(value=>value+1)}catch(e){setError((e as Error).message)}};
  const vote=(match:Match,teamId:number)=>{const teamName=teamId===match.team_a_id?match.team_a_name:match.team_b_name,changing=match.my_vote!=null&&match.my_vote!==teamId,message=changing?`Xác nhận đổi vote sang đội “${teamName}”?\n\nBạn không thể tự huỷ vote. Nếu cần xoá, hãy liên hệ admin.`:`Xác nhận vote cho đội “${teamName}”?\n\nSau khi gửi, bạn không thể tự huỷ vote. Khi vote còn mở, bạn vẫn có thể đổi sang đội còn lại hoặc liên hệ admin nếu cần xoá.`;if(window.confirm(message))void action(`/matches/${match.id}/vote`,'POST',{teamId})};
  const tournament=data?.tournaments[0],tournamentMatches=data?.matches.filter(m=>m.tournament_id===tournament?.id)||[],publicMatches=tournamentMatches.filter(m=>!m.hidden),hiddenMatchCount=tournamentMatches.length-publicMatches.length,matches=tournamentMatches.filter(m=>!m.hidden||(user.role==='admin'&&showHiddenMatches)),finishedMatchCount=tournamentMatches.filter(m=>m.status==='finished').length,maxRound=Math.max(1,...tournamentMatches.map(m=>m.round_no)),activeTeams=data?.teams.filter(t=>t.active)||[],visibleTeams=user.role==='admin'?data?.teams:data?.teams.filter(t=>t.active),canReorder=tournamentMatches.every(m=>m.status!=='finished'&&m.votes_a+m.votes_b===0);
@@ -87,7 +964,7 @@ function Login({
       window.history.replaceState(
         {},
         '',
-        window.location.pathname
+        '/'
       );
 
       onLogin(d.user, d.csrf);
@@ -290,7 +1167,50 @@ function ProfileModal({user,request,onClose,onSaved}:{user:User;request:(path:st
 
 function UsersModal({request,currentUserId,onClose}:{request:(path:string,init?:RequestInit)=>Promise<any>;currentUserId:number;onClose:()=>void}){const[users,setUsers]=useState<User[]>([]),[selectedId,setSelectedId]=useState<number|null>(null),[error,setError]=useState(''),[saved,setSaved]=useState(''),[saving,setSaving]=useState(false);const load=()=>request('/users').then((items:User[])=>{setUsers(items);setSelectedId(id=>id??items[0]?.id??null)}).catch(e=>setError(e.message));useEffect(()=>{load()},[]);const selected=users.find(u=>u.id===selectedId);return <div className="overlay"><div className="modal users-modal"><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">CHỈ DÀNH CHO ADMIN</span><h2>Quản lý tài khoản</h2><div className="user-manager"><div className="user-list">{users.map(u=><button key={u.id} className={u.id===selectedId?'selected':''} onClick={()=>{setSelectedId(u.id);setError('');setSaved('')}}><span className="voter-avatar">{u.displayName.charAt(0).toUpperCase()}</span><span><b>{u.displayName}</b><small>@{u.username} · {u.role}{!u.active?' · đã khóa':''}</small></span></button>)}</div>{selected&&<form key={selected.id} className="user-editor" onSubmit={async e=>{e.preventDefault();setSaving(true);setError('');setSaved('');const f=new FormData(e.currentTarget),body:any={displayName:f.get('displayName'),role:f.get('role'),active:f.get('active')==='on'};if(f.get('password'))body.password=f.get('password');try{await request(`/users/${selected.id}`,{method:'PATCH',body:JSON.stringify(body)});setSaved('Đã lưu tài khoản');await load()}catch(x){setError((x as Error).message)}finally{setSaving(false)}}}><label>Tên đăng nhập<input value={selected.username} disabled/></label><label>Tên hiển thị<input name="displayName" defaultValue={selected.displayName} required maxLength={80}/></label><label>Phân quyền<select name="role" defaultValue={selected.role}><option value="user">User</option><option value="admin">Admin</option></select></label><PasswordField name="password" label="Đặt mật khẩu mới" autoComplete="new-password" minLength={8}/><label className="check-label"><input name="active" type="checkbox" defaultChecked={selected.active} disabled={selected.id===currentUserId}/> Tài khoản đang hoạt động</label><p className="hint">Mật khẩu cũ không thể xem lại. Để trống nếu không muốn đặt lại.</p>{error&&<div className="form-error">{error}</div>}{saved&&<div className="form-success"><Check size={14}/>{saved}</div>}<div className="user-editor-actions"><button className="primary" disabled={saving}>{saving?'Đang lưu...':'Lưu tài khoản'}</button>{selected.id!==currentUserId&&<button type="button" className="danger" onClick={async()=>{if(!window.confirm(`Xóa tài khoản “${selected.displayName}”? Toàn bộ vote và điểm của tài khoản này cũng sẽ bị xóa.`))return;setSaving(true);setError('');try{await request(`/users/${selected.id}`,{method:'DELETE'});setSelectedId(null);await load()}catch(x){setError((x as Error).message)}finally{setSaving(false)}}}><Trash2 size={16}/> Xóa tài khoản</button>}</div></form>}</div></div></div>}
 
-function PasswordField({name,label,required=false,minLength,autoComplete,placeholder}:{name:string;label:string;required?:boolean;minLength?:number;autoComplete?:string;placeholder?:string}){const[visible,setVisible]=useState(false);return <label>{label}<span className="password-input"><input name={name} type={visible?'text':'password'} required={required} minLength={minLength} autoComplete={autoComplete} placeholder={placeholder}/><button type="button" onClick={()=>setVisible(v=>!v)} title={visible?'Ẩn mật khẩu':'Hiện mật khẩu'} aria-label={visible?'Ẩn mật khẩu':'Hiện mật khẩu'} aria-pressed={visible}>{visible?<EyeOff size={17}/>:<Eye size={17}/>}</button></span></label>}
+function PasswordField({
+  name,
+  label,
+  required,
+  minLength,
+  autoComplete,
+  placeholder,
+  defaultValue
+}: {
+  name: string;
+  label: string;
+  required?: boolean;
+  minLength?: number;
+  autoComplete?: string;
+  placeholder?: string;
+  defaultValue?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label>
+      {label}
+      <span className="password-input">
+        <input
+          name={name}
+          type={visible ? "text" : "password"}
+          required={required}
+          minLength={minLength}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          defaultValue={defaultValue}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          title={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+          aria-label={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+          aria-pressed={visible}
+        >
+          {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+        </button>
+      </span>
+    </label>
+  );
+}
 
 function FormModal({title,fields,onClose,onSubmit}:{title:string;fields:string[][];onClose:()=>void;onSubmit:(v:any)=>void}){return <div className="overlay"><form className="modal" onSubmit={e=>{e.preventDefault();onSubmit(Object.fromEntries(new FormData(e.currentTarget)))} }><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">QUẢN TRỊ</span><h2>{title}</h2>{fields.map(f=>f[2]==='password'?<PasswordField key={f[0]} name={f[0]} label={f[1]} required minLength={8} autoComplete="new-password"/>:<label key={f[0]}>{f[1]}<input name={f[0]} type={f[2]||'text'} defaultValue={f[2]==='color'?'#c9ff47':''} required/></label>)}<button className="primary wide">Lưu thông tin</button></form></div>}
 function MatchModal({match:m,onClose,onSubmit}:{match:Match;onClose:()=>void;onSubmit:(v:any)=>void}){return <div className="overlay"><form className="modal" onSubmit={e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.currentTarget));onSubmit({handicapA:Number(v.handicapA),handicapB:Number(v.handicapB),...(v.scoreA!==''&&v.scoreB!==''?{scoreA:Number(v.scoreA),scoreB:Number(v.scoreB)}:{})})}}><button type="button" className="close" onClick={onClose}><X/></button><span className="kicker">ĐIỀU HÀNH TRẬN ĐẤU</span><h2>{m.team_a_name||'TBD'} <em>vs</em> {m.team_b_name||'TBD'}</h2><div className="two"><label>Chấp điểm {m.team_a_name}<input name="handicapA" type="number" min="0" step="0.5" defaultValue={m.handicap_a??0}/></label><label>Chấp điểm {m.team_b_name}<input name="handicapB" type="number" min="0" step="0.5" defaultValue={m.handicap_b??0}/></label></div><div className="two"><label>Điểm thực tế đội A<input name="scoreA" type="number" min="0" defaultValue={m.score_a??''}/></label><label>Điểm thực tế đội B<input name="scoreB" type="number" min="0" defaultValue={m.score_b??''}/></label></div><p className="hint">Đội thắng được tính theo điểm thực tế + điểm chấp và tự động vào vòng kế tiếp.</p><button className="primary wide">Cập nhật trận đấu</button></form></div>}
