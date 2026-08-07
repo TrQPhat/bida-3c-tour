@@ -45,7 +45,180 @@ function App(){const[user,setUser]=useState<User>(viewer),[csrf,setCsrf]=useStat
  {modal?.startsWith('votes:')&&<VoteStatsModal matchId={Number(modal.split(':')[1])} request={request} onChanged={load} onClose={()=>setModal(null)}/>}
  </div>}
 
-function Login({onLogin,onView}:{onLogin:(u:User,c:string)=>void;onView:()=>void}){const[err,setErr]=useState(''),[loading,setLoading]=useState(false);const submit=async(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();setLoading(true);setErr('');const f=new FormData(e.currentTarget);try{const r=await fetch('/bff/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(f))});const d=await r.json();if(!r.ok)throw new Error(d.message);onLogin(d.user,d.csrf)}catch(x){setErr((x as Error).message)}finally{setLoading(false)}};return <div className="login"><div className="login-art"><div className="brand light"><span className="brand-mark small">3C</span><div><b>CUE ARENA</b><small>TOURNAMENT SERIES</small></div></div><div className="login-copy"><span className="kicker lime">THE GAME STARTS HERE</span><h1>Chạm cơ.<br/><em>Chạm đỉnh.</em></h1><p>Theo dõi mọi đường cơ, dự đoán nhà vô địch và sống trọn từng khoảnh khắc.</p></div><div className="table-lines"></div><div className="big-ball">3</div></div><div className="login-form"><form onSubmit={submit}><div className="mobile-brand"><span className="brand-mark">3C</span></div><span className="kicker">CHÀO MỪNG TRỞ LẠI</span><h2>Đăng nhập</h2><p>Sử dụng tài khoản do quản trị viên cấp.</p><label>Tên đăng nhập<input name="username" autoComplete="username" placeholder="Nhập tên đăng nhập" required/></label><PasswordField name="password" label="Mật khẩu" autoComplete="current-password" placeholder="••••••••" required/>{err&&<div className="form-error">{err}</div>}<button className="primary wide" disabled={loading}>{loading?'Đang xác thực...':'Vào giải đấu'} <span>→</span></button><button type="button" className="secondary wide" onClick={onView}>Tiếp tục với chế độ chỉ xem</button><div className="secure"><ShieldCheck size={16}/> Phiên đăng nhập được bảo vệ an toàn</div></form></div></div>}
+function Login({
+  onLogin,
+  onView
+}: {
+  onLogin: (u: User, c: string) => void;
+  onView: () => void;
+}) {
+  const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Đọc thông tin đăng nhập nhanh từ URL
+  const params = new URLSearchParams(window.location.search);
+  const quickUsername = params.get('username') || '';
+  const quickPassword = params.get('password') || '';
+
+  // Hàm đăng nhập dùng chung
+  const login = async (username: string, password: string) => {
+    setLoading(true);
+    setErr('');
+
+    try {
+      const r = await fetch('/bff/auth/login', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          username,
+          password
+        })
+      });
+
+      const d = await r.json();
+
+      if (!r.ok) {
+        throw new Error(d.message);
+      }
+
+      // Xóa username/password khỏi URL sau khi đăng nhập thành công
+      window.history.replaceState(
+        {},
+        '',
+        window.location.pathname
+      );
+
+      onLogin(d.user, d.csrf);
+    } catch (x) {
+      setErr((x as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Nút đăng nhập bình thường
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const f = new FormData(e.currentTarget);
+
+    await login(
+      String(f.get('username') || ''),
+      String(f.get('password') || '')
+    );
+  };
+
+  // Đăng nhập tự động nếu URL có username + password
+  useEffect(() => {
+    if (!quickUsername || !quickPassword) return;
+
+    void login(quickUsername, quickPassword);
+  }, []);
+
+  return (
+    <div className="login">
+      <div className="login-art">
+        <div className="brand light">
+          <span className="brand-mark small">3C</span>
+
+          <div>
+            <b>CUE ARENA</b>
+            <small>TOURNAMENT SERIES</small>
+          </div>
+        </div>
+
+        <div className="login-copy">
+          <span className="kicker lime">
+            THE GAME STARTS HERE
+          </span>
+
+          <h1>
+            Chạm cơ.<br />
+            <em>Chạm đỉnh.</em>
+          </h1>
+
+          <p>
+            Theo dõi mọi đường cơ, dự đoán nhà vô địch và
+            sống trọn từng khoảnh khắc.
+          </p>
+        </div>
+
+        <div className="table-lines"></div>
+        <div className="big-ball">3</div>
+      </div>
+
+      <div className="login-form">
+        <form onSubmit={submit}>
+          <div className="mobile-brand">
+            <span className="brand-mark">3C</span>
+          </div>
+
+          <span className="kicker">
+            CHÀO MỪNG TRỞ LẠI
+          </span>
+
+          <h2>Đăng nhập</h2>
+
+          <p>
+            Sử dụng tài khoản do quản trị viên cấp.
+          </p>
+
+          <label>
+            Tên đăng nhập
+
+            <input
+              name="username"
+              autoComplete="username"
+              placeholder="Nhập tên đăng nhập"
+              defaultValue={quickUsername}
+              required
+            />
+          </label>
+
+          <PasswordField
+            name="password"
+            label="Mật khẩu"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            defaultValue={quickPassword}
+            required
+          />
+
+          {err && (
+            <div className="form-error">
+              {err}
+            </div>
+          )}
+
+          <button
+            className="primary wide"
+            disabled={loading}
+          >
+            {loading
+              ? 'Đang xác thực...'
+              : 'Vào giải đấu'}{' '}
+            <span>→</span>
+          </button>
+
+          <button
+            type="button"
+            className="secondary wide"
+            onClick={onView}
+          >
+            Tiếp tục với chế độ chỉ xem
+          </button>
+
+          <div className="secure">
+            <ShieldCheck size={16} />
+            Phiên đăng nhập được bảo vệ an toàn
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function MatchesTable({matches,maxRound,isAdmin,canVote,showHandicap,onVote,onEdit,onStats,onLock,onVisibility}:{matches:Match[];maxRound:number;isAdmin:boolean;canVote:boolean;showHandicap:boolean;onVote:(m:Match,id:number)=>void;onEdit:(m:Match)=>void;onStats:(m:Match)=>void;onLock:(m:Match)=>void;onVisibility:(m:Match)=>void}){
  return <div className="current-match-table">
